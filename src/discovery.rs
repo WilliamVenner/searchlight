@@ -16,6 +16,7 @@ mod handle;
 pub use handle::*;
 
 mod listen;
+pub use listen::Responder;
 
 pub struct Discovery {
     socket: MdnsSocket,
@@ -24,7 +25,7 @@ pub struct Discovery {
     peer_window: Duration,
 }
 impl Discovery {
-    pub fn run<F>(self, handler: F) -> DiscoveryHandle
+    pub fn run_background<F>(self, handler: F) -> DiscoveryHandle
     where
         F: Fn(DiscoveryEvent) + Send + Sync + 'static,
     {
@@ -32,10 +33,11 @@ impl Discovery {
 
         let thread = std::thread::spawn(move || {
             tokio::runtime::Builder::new_current_thread()
+                .thread_name("Searchlight mDNS Discovery (Tokio)")
                 .enable_all()
                 .build()
                 .unwrap()
-                .block_on(self.impl_run(shutdown_rx, Arc::new(handler)))
+                .block_on(self.impl_run(Arc::new(handler), Some(shutdown_rx)))
         });
 
         DiscoveryHandle(DiscoveryHandleDrop(Some(DiscoveryHandleInner {
@@ -43,12 +45,24 @@ impl Discovery {
             shutdown_tx,
         })))
     }
+
+    pub fn run<F>(self, handler: F) -> Result<(), std::io::Error>
+    where
+        F: Fn(DiscoveryEvent) + Send + Sync + 'static,
+    {
+        tokio::runtime::Builder::new_current_thread()
+            .thread_name("Searchlight mDNS Discovery (Tokio)")
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(self.impl_run(Arc::new(handler), None))
+    }
 }
 impl Discovery {
     async fn impl_run(
         self,
-        shutdown_rx: tokio::sync::oneshot::Receiver<()>,
         handler: EventHandler,
+        shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     ) -> Result<(), std::io::Error> {
         let Discovery {
             socket,
@@ -62,11 +76,19 @@ impl Discovery {
         let tick_loop = Self::tick_loop(service_name.clone(), interval, &socket);
         let listen_loop = Self::listen_loop(service_name, handler, peer_window, &socket);
 
+        let shutdown = async move {
+            if let Some(shutdown_rx) = shutdown_rx {
+                shutdown_rx.await
+            } else {
+                std::future::pending().await
+            }
+        };
+
         tokio::select! {
             biased;
             res = tick_loop => res,
             res = listen_loop => res,
-            _ = shutdown_rx => Ok(()),
+            _ = shutdown => Ok(()),
         }
     }
 

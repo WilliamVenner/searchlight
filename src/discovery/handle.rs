@@ -11,8 +11,12 @@ impl DiscoveryHandleDrop {
             shutdown_tx,
         } = match self.0.take() {
             Some(inner) => inner,
-            None => unreachable!(),
+            None => return Ok(Ok(())),
         };
+
+        if thread.is_finished() {
+            return Ok(Ok(()));
+        }
 
         shutdown_tx.send(()).ok();
         thread.join()
@@ -27,6 +31,8 @@ impl Drop for DiscoveryHandleDrop {
 pub struct DiscoveryHandle(pub(super) DiscoveryHandleDrop);
 impl DiscoveryHandle {
     pub fn shutdown(mut self) -> std::thread::Result<Result<(), std::io::Error>> {
-        self.0.shutdown()
+        let res = self.0.shutdown();
+        std::mem::forget(self.0);
+        res
     }
 }

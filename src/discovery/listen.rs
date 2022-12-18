@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 use trust_dns_client::{
-    op::{DnsResponse, Message},
+    op::{DnsResponse, Message as DnsMessage, MessageType as DnsMessageType},
     rr::Name as DnsName,
     serialize::binary::BinDecodable,
 };
@@ -102,9 +102,11 @@ impl super::Discovery {
             return;
         }
 
-        let response = match Message::from_bytes(&packet[..count]) {
-            Ok(response) => DnsResponse::from(response),
-            Err(_) => return,
+        let response = match DnsMessage::from_bytes(&packet[..count]) {
+            Ok(response) if response.message_type() == DnsMessageType::Response => {
+                DnsResponse::from(response)
+            }
+            _ => return,
         };
 
         if let Some(service_name) = service_name {

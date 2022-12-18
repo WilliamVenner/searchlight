@@ -4,7 +4,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     time::Duration,
 };
-use tokio::net::UdpSocket as AsyncUdpSocket;
+use tokio::net::{ToSocketAddrs, UdpSocket as AsyncUdpSocket};
 
 pub(crate) type AsyncMdnsSocket = MdnsSocket<AsyncUdpSocket>;
 
@@ -18,22 +18,23 @@ pub(crate) enum MdnsSocket<S = std::net::UdpSocket> {
 }
 impl MdnsSocket<std::net::UdpSocket> {
     pub fn new(
+        loopback: bool,
         interface_v4: Option<Ipv4Addr>,
         interface_v6: Option<u32>,
     ) -> Result<Self, std::io::Error> {
         Ok(Self::Multicol {
-            v4: match Self::new_v4(interface_v4)? {
+            v4: match Self::new_v4(loopback, interface_v4)? {
                 Self::V4(socket) => socket,
                 _ => unreachable!(),
             },
-            v6: match Self::new_v6(interface_v6)? {
+            v6: match Self::new_v6(loopback, interface_v6)? {
                 Self::V6(socket) => socket,
                 _ => unreachable!(),
             },
         })
     }
 
-    pub fn new_v4(interface: Option<Ipv4Addr>) -> Result<Self, std::io::Error> {
+    pub fn new_v4(loopback: bool, interface: Option<Ipv4Addr>) -> Result<Self, std::io::Error> {
         let socket = socket2::Socket::new(
             socket2::Domain::IPV4,
             socket2::Type::DGRAM,
@@ -41,7 +42,7 @@ impl MdnsSocket<std::net::UdpSocket> {
         )?;
         socket.set_read_timeout(Some(Duration::from_millis(100)))?;
         socket.set_reuse_address(true)?;
-        socket.set_multicast_loop_v4(false)?;
+        socket.set_multicast_loop_v4(loopback)?;
 
         #[cfg(unix)]
         {
@@ -87,7 +88,7 @@ impl MdnsSocket<std::net::UdpSocket> {
         Ok(Self::V4(socket.into()))
     }
 
-    pub fn new_v6(interface: Option<u32>) -> Result<Self, std::io::Error> {
+    pub fn new_v6(loopback: bool, interface: Option<u32>) -> Result<Self, std::io::Error> {
         let mut resolved_interface = None;
 
         let socket = socket2::Socket::new(
@@ -98,7 +99,7 @@ impl MdnsSocket<std::net::UdpSocket> {
         socket.set_read_timeout(Some(Duration::from_millis(100)))?;
         socket.set_reuse_address(true)?;
         socket.set_only_v6(true)?;
-        socket.set_multicast_loop_v6(false)?;
+        socket.set_multicast_loop_v6(loopback)?;
 
         #[cfg(unix)]
         {
@@ -174,6 +175,23 @@ impl MdnsSocket<std::net::UdpSocket> {
     }
 }
 impl AsyncMdnsSocket {
+    pub async fn send_to(&self, packet: &[u8], addr: SocketAddr) -> Result<(), std::io::Error> {
+        match (addr, self) {
+            (SocketAddr::V4(addr), Self::V4(v4) | Self::Multicol { v4, .. }) => {
+                v4.send_to(packet, addr).await.map(|_| ())
+            }
+
+            (SocketAddr::V6(addr), Self::V6(v6) | Self::Multicol { v6, .. }) => {
+                v6.send_to_multicast(packet, addr).await.map(|_| ())
+            }
+
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid address",
+            )),
+        }
+    }
+
     pub async fn send_multicast(&self, packet: &[u8]) -> Result<(), std::io::Error> {
         match self {
             Self::V4(v4) => v4
@@ -181,11 +199,15 @@ impl AsyncMdnsSocket {
                 .await
                 .map(|_| ()),
 
-            Self::V6(v6) => v6.send_multicast(packet).await.map(|_| ()),
+            Self::V6(v6) => v6
+                .send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT))
+                .await
+                .map(|_| ()),
 
             Self::Multicol { v4, v6 } => {
                 let v4 = v4.send_to(packet, SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT));
-                let v6 = v6.send_multicast(packet);
+                let v6 = v6
+                    .send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT));
                 tokio::try_join!(v4, v6).map(|_| ())
             }
         }
@@ -247,7 +269,11 @@ impl MultiInterfaceIpv6Socket {
     }
 }
 impl MultiInterfaceIpv6Socket<AsyncUdpSocket> {
-    pub async fn send_multicast(&self, packet: &[u8]) -> Result<(), std::io::Error> {
+    pub async fn send_to_multicast(
+        &self,
+        packet: &[u8],
+        addr: impl ToSocketAddrs + Copy,
+    ) -> Result<(), std::io::Error> {
         for iface in self.ifaces.iter() {
             unsafe {
                 let res = {
@@ -279,9 +305,7 @@ impl MultiInterfaceIpv6Socket<AsyncUdpSocket> {
                 }
             }
 
-            self.socket
-                .send_to(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT))
-                .await?;
+            self.socket.send_to(packet, addr).await?;
         }
         Ok(())
     }
