@@ -12,8 +12,11 @@ pub(crate) type AsyncMdnsSocket = MdnsSocket<AsyncUdpSocket>;
 
 pub(crate) enum MdnsSocket<S = std::net::UdpSocket> {
     V4(S),
-    V6(Ipv6MulticastMdns<S>),
-    Multicol { v4: S, v6: Ipv6MulticastMdns<S> },
+    V6(MultiInterfaceIpv6Socket<S>),
+    Multicol {
+        v4: S,
+        v6: MultiInterfaceIpv6Socket<S>,
+    },
 }
 impl MdnsSocket<std::net::UdpSocket> {
     pub fn new(
@@ -155,7 +158,7 @@ impl MdnsSocket<std::net::UdpSocket> {
 
         socket.set_nonblocking(true)?;
 
-        Ok(Self::V6(Ipv6MulticastMdns {
+        Ok(Self::V6(MultiInterfaceIpv6Socket {
             socket: socket.into(),
             ifaces,
         }))
@@ -192,13 +195,13 @@ impl AsyncMdnsSocket {
 
     pub fn recv(&self, buffer: Vec<u8>) -> MdnsSocketRecv {
         match self {
-            Self::V4(socket) | Self::V6(Ipv6MulticastMdns { socket, .. }) => {
+            Self::V4(socket) | Self::V6(MultiInterfaceIpv6Socket { socket, .. }) => {
                 MdnsSocketRecv::Unicol(socket, buffer)
             }
 
             Self::Multicol {
                 v4,
-                v6: Ipv6MulticastMdns { socket: v6, .. },
+                v6: MultiInterfaceIpv6Socket { socket: v6, .. },
             } => MdnsSocketRecv::Multicol {
                 v4: (v4, buffer.clone()),
                 v6: (v6, buffer),
@@ -233,19 +236,19 @@ impl MdnsSocketRecv<'_> {
     }
 }
 
-pub(crate) struct Ipv6MulticastMdns<S = std::net::UdpSocket> {
+pub(crate) struct MultiInterfaceIpv6Socket<S = std::net::UdpSocket> {
     socket: S,
     ifaces: BTreeSet<u32>,
 }
-impl Ipv6MulticastMdns {
-    async fn into_async(self) -> Result<Ipv6MulticastMdns<AsyncUdpSocket>, std::io::Error> {
-        Ok(Ipv6MulticastMdns {
+impl MultiInterfaceIpv6Socket {
+    async fn into_async(self) -> Result<MultiInterfaceIpv6Socket<AsyncUdpSocket>, std::io::Error> {
+        Ok(MultiInterfaceIpv6Socket {
             socket: AsyncUdpSocket::from_std(self.socket)?,
             ifaces: self.ifaces,
         })
     }
 }
-impl Ipv6MulticastMdns<AsyncUdpSocket> {
+impl MultiInterfaceIpv6Socket<AsyncUdpSocket> {
     pub async fn send_multicast(&self, packet: &[u8]) -> Result<(), std::io::Error> {
         for iface in self.ifaces.iter() {
             unsafe {
