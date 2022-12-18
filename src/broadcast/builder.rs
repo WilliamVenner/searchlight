@@ -1,5 +1,5 @@
-use super::{service::ServiceDnsResponse, BroadcasterConfig};
-use crate::{errors::BroadcasterBuilderError, socket::MdnsSocket, Broadcaster, Service};
+use super::{service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
+use crate::{errors::BroadcasterBuilderError, socket::MdnsSocket};
 use std::{
     collections::BTreeSet,
     net::Ipv4Addr,

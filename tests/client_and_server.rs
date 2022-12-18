@@ -1,3 +1,7 @@
+use searchlight::{
+    broadcast::{BroadcasterBuilder, ServiceBuilder},
+    discovery::{DiscoveryBuilder, DiscoveryEvent},
+};
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -5,8 +9,6 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-
-use searchlight::{BroadcasterBuilder, DiscoveryBuilder, DiscoveryEvent, ServiceBuilder};
 
 #[test]
 fn client_and_server() {

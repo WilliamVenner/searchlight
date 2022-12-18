@@ -19,7 +19,7 @@ mod handle;
 pub use handle::BroadcasterHandle;
 use handle::*;
 
-pub struct BroadcasterConfig {
+pub(crate) struct BroadcasterConfig {
     services: BTreeSet<ServiceDnsResponse>,
 }
 

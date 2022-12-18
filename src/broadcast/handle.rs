@@ -1,8 +1,7 @@
-use super::BroadcasterConfig;
+use super::{BroadcasterConfig, Service};
 use crate::{
     errors::{BadNameError, ServiceDnsPacketError},
     util::IntoDnsName,
-    Service,
 };
 use std::sync::{Arc, RwLock};
 
@@ -76,15 +75,46 @@ impl BroadcasterHandle {
         &self,
         service_type: impl IntoDnsName,
         service_name: impl IntoDnsName,
-    ) -> Result<(), BadNameError> {
+    ) -> Result<bool, BadNameError> {
         let service_type = service_type.into_fqdn().map_err(|_| BadNameError)?;
         let service_name = service_name.into_fqdn().map_err(|_| BadNameError)?;
+
+        let mut found = false;
         self.with_config(|broadcaster| {
             broadcaster.write().unwrap().services.retain(|service| {
-                *service.service_name() != service_name || *service.service_type() != service_type
+                if *service.service_name() != service_name
+                    || *service.service_type() != service_type
+                {
+                    true
+                } else {
+                    found = true;
+                    false
+                }
             })
         });
-        Ok(())
+
+        Ok(found)
+    }
+
+    pub fn remove_service_type(
+        &self,
+        service_type: impl IntoDnsName,
+    ) -> Result<bool, BadNameError> {
+        let service_type = service_type.into_fqdn().map_err(|_| BadNameError)?;
+
+        let mut found = false;
+        self.with_config(|broadcaster| {
+            broadcaster.write().unwrap().services.retain(|service| {
+                if *service.service_type() != service_type {
+                    true
+                } else {
+                    found = true;
+                    false
+                }
+            })
+        });
+
+        Ok(found)
     }
 
     pub fn remove_service(&self, service: &Service) {

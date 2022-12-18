@@ -1,4 +1,4 @@
-use crate::ServiceBuilder;
+use crate::broadcast::ServiceBuilder;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,

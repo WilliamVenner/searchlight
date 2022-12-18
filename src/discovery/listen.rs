@@ -1,5 +1,5 @@
-use super::EventHandler;
-use crate::{socket::AsyncMdnsSocket, DiscoveryEvent};
+use super::{DiscoveryEvent, EventHandler};
+use crate::socket::AsyncMdnsSocket;
 use std::{
     borrow::Borrow,
     collections::HashSet,

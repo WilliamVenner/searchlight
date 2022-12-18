@@ -7,13 +7,15 @@ use trust_dns_client::{
 };
 
 mod builder;
-pub use builder::*;
+pub use builder::DiscoveryBuilder;
 
 mod event;
-pub use event::*;
+pub use event::DiscoveryEvent;
+use event::*;
 
 mod handle;
-pub use handle::*;
+pub use handle::DiscoveryHandle;
+use handle::*;
 
 mod listen;
 pub use listen::Responder;
