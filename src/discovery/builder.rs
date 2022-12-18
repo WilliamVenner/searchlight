@@ -15,14 +15,14 @@ impl std::error::Error for BadNameError {}
 pub struct DiscoveryBuilder {
     service_name: Option<DnsName>,
     interval: Duration,
-    peer_window: Duration,
+    responder_window: Duration,
 }
 impl DiscoveryBuilder {
     pub fn new() -> Self {
         Self {
             service_name: None,
             interval: Duration::from_secs(10),
-            peer_window: Duration::from_secs(10),
+            responder_window: Duration::from_secs(10),
         }
     }
 
@@ -33,11 +33,17 @@ impl DiscoveryBuilder {
 
     pub fn interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
+        self.responder_window = self.responder_window.max(interval);
         self
     }
 
-    pub fn peer_window(mut self, peer_window: Duration) -> Self {
-        self.peer_window = peer_window;
+    /// The responder window is the amount of time that a responder is considered active.
+    ///
+    /// If a responder goes quiet for this amount of time, it is considered "lost" and will emit a [`DiscoveryEvent::ResponderLost`](crate::discovery::event::DiscoveryEvent::ResponderLost) event.
+    ///
+    /// This value must be greater than or equal to the interval, it will be clamped to the interval if it is any less.
+    pub fn responder_window(mut self, peer_window: Duration) -> Self {
+        self.responder_window = peer_window.max(self.interval);
         self
     }
 
@@ -93,7 +99,7 @@ impl DiscoveryInterfaceBuilderV4 {
         let DiscoveryBuilder {
             service_name,
             interval,
-            peer_window,
+            responder_window: peer_window,
         } = self.builder;
 
         Ok(Discovery {
@@ -129,7 +135,7 @@ impl DiscoveryInterfaceBuilderV6 {
         let DiscoveryBuilder {
             service_name,
             interval,
-            peer_window,
+            responder_window: peer_window,
         } = self.builder;
 
         Ok(Discovery {
@@ -181,7 +187,7 @@ impl DiscoveryInterfaceBuilderAny {
         let DiscoveryBuilder {
             service_name,
             interval,
-            peer_window,
+            responder_window: peer_window,
         } = self.builder;
 
         Ok(Discovery {
