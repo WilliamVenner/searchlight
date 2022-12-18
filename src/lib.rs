@@ -17,11 +17,11 @@ pub const MDNS_V6_IP: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 0xfb);
 pub use trust_dns_client as dns;
 
 pub mod net {
-    pub use crate::{
-        socket::{IpVersion, TargetInterface},
-        util::iface_v6_name_to_index,
-    };
-    pub use if_addrs;
+	pub use crate::{
+		socket::{IpVersion, TargetInterface},
+		util::iface_v6_name_to_index,
+	};
+	pub use if_addrs;
 }
 
 #[cfg(test)]
