@@ -1,8 +1,5 @@
 use super::EventHandler;
-use crate::{
-    socket::{AsyncMdnsSocket, MdnsSocket},
-    DiscoveryEvent,
-};
+use crate::{socket::AsyncMdnsSocket, DiscoveryEvent};
 use std::{
     borrow::Borrow,
     collections::HashSet,
@@ -109,6 +106,17 @@ impl super::Discovery {
             Ok(response) => DnsResponse::from(response),
             Err(_) => return,
         };
+
+        if let Some(service_name) = service_name {
+            if !response
+                .answers()
+                .iter()
+                .any(|answer| answer.name() == service_name)
+            {
+                // This response does not contain the service we are looking for.
+                return;
+            }
+        }
 
         let event = {
             let old = response_memory_bank

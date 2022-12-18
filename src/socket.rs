@@ -2,8 +2,6 @@ use crate::{util::iface_v6_name_to_index, MDNS_PORT, MDNS_V4_IP, MDNS_V6_IP};
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    num::NonZeroU32,
-    ops::{Deref, DerefMut},
     time::Duration,
 };
 use tokio::net::UdpSocket as AsyncUdpSocket;
