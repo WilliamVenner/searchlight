@@ -2,25 +2,36 @@ use crate::{util::iface_v6_name_to_index, MDNS_PORT, MDNS_V4_IP, MDNS_V6_IP};
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    num::NonZeroU32,
     time::Duration,
 };
 use tokio::net::{ToSocketAddrs, UdpSocket as AsyncUdpSocket};
 
-pub(crate) type AsyncMdnsSocket = MdnsSocket<AsyncUdpSocket>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IpVersion {
+    V4,
+    V6,
+    Both,
+}
 
+#[derive(Clone, Copy, Debug)]
+pub enum TargetInterface<Addr> {
+    Default,
+    All,
+    Specific(Addr),
+}
+
+pub(crate) type AsyncMdnsSocket = MdnsSocket<AsyncUdpSocket>;
 pub(crate) enum MdnsSocket<S = std::net::UdpSocket> {
     V4(S),
-    V6(MultiInterfaceIpv6Socket<S>),
-    Multicol {
-        v4: S,
-        v6: MultiInterfaceIpv6Socket<S>,
-    },
+    V6(Ipv6MdnsSocket<S>),
+    Multicol { v4: S, v6: Ipv6MdnsSocket<S> },
 }
 impl MdnsSocket<std::net::UdpSocket> {
     pub fn new(
         loopback: bool,
-        interface_v4: Option<Ipv4Addr>,
-        interface_v6: Option<u32>,
+        interface_v4: TargetInterface<Ipv4Addr>,
+        interface_v6: TargetInterface<NonZeroU32>,
     ) -> Result<Self, std::io::Error> {
         Ok(Self::Multicol {
             v4: match Self::new_v4(loopback, interface_v4)? {
@@ -34,7 +45,10 @@ impl MdnsSocket<std::net::UdpSocket> {
         })
     }
 
-    pub fn new_v4(loopback: bool, interface: Option<Ipv4Addr>) -> Result<Self, std::io::Error> {
+    pub fn new_v4(
+        loopback: bool,
+        interface: TargetInterface<Ipv4Addr>,
+    ) -> Result<Self, std::io::Error> {
         let socket = socket2::Socket::new(
             socket2::Domain::IPV4,
             socket2::Type::DGRAM,
@@ -49,37 +63,50 @@ impl MdnsSocket<std::net::UdpSocket> {
             socket.set_reuse_port(true)?;
         }
 
-        if let Some(interface) = interface {
-            socket.join_multicast_v4(&MDNS_V4_IP, &interface)?;
-        } else {
-            // Join multicast on all interfaces
-            let mut did_join = false;
-            if let Ok(ifaces) = if_addrs::get_if_addrs() {
-                let mut joined = BTreeSet::new();
-                for iface in ifaces
-                    .into_iter()
-                    .filter(|iface| !iface.is_loopback())
-                    .filter_map(|iface| {
-                        if let IpAddr::V4(iface) = iface.addr.ip() {
-                            Some(iface)
-                        } else {
-                            None
-                        }
+        match interface {
+            TargetInterface::Default => {
+                socket.join_multicast_v4(&MDNS_V4_IP, &Ipv4Addr::UNSPECIFIED)?;
+            }
+
+            TargetInterface::Specific(iface) => {
+                socket.join_multicast_v4(&MDNS_V4_IP, &iface)?;
+            }
+
+            TargetInterface::All => {
+                let mut did_join = false;
+                for iface in if_addrs::get_if_addrs()
+                    .map(|ifaces| {
+                        ifaces
+                            .into_iter()
+                            .filter(|iface| !iface.is_loopback())
+                            .filter_map(|iface| {
+                                if let IpAddr::V4(iface) = iface.addr.ip() {
+                                    Some(iface)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<BTreeSet<Ipv4Addr>>()
                     })
-                    .filter(|iface| joined.insert(*iface))
+                    .unwrap_or_default()
                 {
                     if socket.join_multicast_v4(&MDNS_V4_IP, &iface).is_ok() {
                         did_join = true;
                     }
                 }
-            }
-            if !did_join {
-                socket.join_multicast_v4(&MDNS_V4_IP, &Ipv4Addr::UNSPECIFIED)?;
+                if !did_join {
+                    // Fallback to default
+                    socket.join_multicast_v4(&MDNS_V4_IP, &Ipv4Addr::UNSPECIFIED)?;
+                }
             }
         }
 
         socket.bind(&socket2::SockAddr::from(SocketAddr::new(
-            IpAddr::V4(interface.unwrap_or(Ipv4Addr::UNSPECIFIED)),
+            IpAddr::V4(if let TargetInterface::Specific(addr) = interface {
+                addr
+            } else {
+                Ipv4Addr::UNSPECIFIED
+            }),
             MDNS_PORT,
         )))?;
 
@@ -88,9 +115,10 @@ impl MdnsSocket<std::net::UdpSocket> {
         Ok(Self::V4(socket.into()))
     }
 
-    pub fn new_v6(loopback: bool, interface: Option<u32>) -> Result<Self, std::io::Error> {
-        let mut resolved_interface = None;
-
+    pub fn new_v6(
+        loopback: bool,
+        interface: TargetInterface<NonZeroU32>,
+    ) -> Result<Self, std::io::Error> {
         let socket = socket2::Socket::new(
             socket2::Domain::IPV6,
             socket2::Type::DGRAM,
@@ -106,47 +134,55 @@ impl MdnsSocket<std::net::UdpSocket> {
             socket.set_reuse_port(true)?;
         }
 
-        // TODO refactor in resolved_interface = Some case
-        let ifaces = if_addrs::get_if_addrs()
+        // In the case of TargetInterface::Specific, we need to convert the index to an IP address for binding
+        let mut resolved_interface = None;
+
+        let all_interfaces = if_addrs::get_if_addrs()
             .map(|ifaces| {
                 ifaces
                     .into_iter()
-                    .filter(|iface| !iface.is_loopback())
+                    .filter(|iface| !iface.is_loopback() && iface.addr.ip().is_ipv6())
                     .filter_map(|iface| {
                         let index = iface_v6_name_to_index(&iface.name).ok()?.get();
+
+                        if let TargetInterface::Specific(unresolved_index) = interface {
+                            if unresolved_index.get() == index {
+                                resolved_interface = Some(iface.addr.ip());
+                            }
+                        }
 
                         if socket.set_multicast_if_v6(index).is_err() {
                             return None;
                         }
 
-                        if let Some(interface) = interface {
-                            if index == interface {
-                                resolved_interface = Some(iface.addr.ip());
-                            }
-                        }
-
-                        if iface.addr.ip().is_ipv6() {
-                            Some(index)
-                        } else {
-                            None
-                        }
+                        Some(index)
                     })
                     .collect::<BTreeSet<_>>()
             })
             .unwrap_or_default();
 
-        if let Some(interface) = interface {
-            socket.join_multicast_v6(&MDNS_V6_IP, interface)?;
-        } else {
-            // Join multicast on all interfaces
-            let mut did_join = false;
-            for iface in ifaces.iter().copied() {
-                if socket.join_multicast_v6(&MDNS_V6_IP, iface).is_ok() {
-                    did_join = true;
-                }
-            }
-            if !did_join {
+        match interface {
+            TargetInterface::Default => {
                 socket.join_multicast_v6(&MDNS_V6_IP, 0)?;
+            }
+
+            TargetInterface::Specific(index) => {
+                socket.join_multicast_v6(&MDNS_V6_IP, index.get())?;
+            }
+
+            TargetInterface::All => {
+                let mut did_join = false;
+
+                for iface in all_interfaces.iter().copied() {
+                    if socket.join_multicast_v6(&MDNS_V6_IP, iface).is_ok() {
+                        did_join = true;
+                    }
+                }
+
+                if !did_join {
+                    // Fallback to default
+                    socket.join_multicast_v6(&MDNS_V6_IP, 0)?;
+                }
             }
         }
 
@@ -157,10 +193,7 @@ impl MdnsSocket<std::net::UdpSocket> {
 
         socket.set_nonblocking(true)?;
 
-        Ok(Self::V6(MultiInterfaceIpv6Socket {
-            socket: socket.into(),
-            ifaces,
-        }))
+        Ok(Self::V6(Ipv6MdnsSocket::new(socket, all_interfaces)?))
     }
 
     pub async fn into_async(self) -> Result<AsyncMdnsSocket, std::io::Error> {
@@ -215,16 +248,14 @@ impl AsyncMdnsSocket {
 
     pub fn recv(&self, buffer: Vec<u8>) -> MdnsSocketRecv {
         match self {
-            Self::V4(socket) | Self::V6(MultiInterfaceIpv6Socket { socket, .. }) => {
+            Self::V4(socket)
+            | Self::V6(Ipv6MdnsSocket::Single(socket) | Ipv6MdnsSocket::Multi { socket, .. }) => {
                 MdnsSocketRecv::Unicol(socket, buffer)
             }
 
-            Self::Multicol {
-                v4,
-                v6: MultiInterfaceIpv6Socket { socket: v6, .. },
-            } => MdnsSocketRecv::Multicol {
+            Self::Multicol { v4, v6 } => MdnsSocketRecv::Multicol {
                 v4: (v4, buffer.clone()),
-                v6: (v6, buffer),
+                v6: (v6.socket(), buffer),
             },
         }
     }
@@ -256,57 +287,106 @@ impl MdnsSocketRecv<'_> {
     }
 }
 
-pub(crate) struct MultiInterfaceIpv6Socket<S = std::net::UdpSocket> {
-    socket: S,
-    ifaces: BTreeSet<u32>,
+/// Hacky abstraction that allows us to send to multicast on a group of interfaces
+pub(crate) enum Ipv6MdnsSocket<S = std::net::UdpSocket> {
+    Single(S),
+    Multi { socket: S, ifaces: BTreeSet<u32> },
 }
-impl MultiInterfaceIpv6Socket {
-    async fn into_async(self) -> Result<MultiInterfaceIpv6Socket<AsyncUdpSocket>, std::io::Error> {
-        Ok(MultiInterfaceIpv6Socket {
-            socket: AsyncUdpSocket::from_std(self.socket)?,
-            ifaces: self.ifaces,
+impl Ipv6MdnsSocket {
+    fn new(socket: socket2::Socket, ifaces: BTreeSet<u32>) -> Result<Self, std::io::Error> {
+        match ifaces.len() {
+            0 => socket.set_multicast_if_v6(0)?,
+            1 => socket.set_multicast_if_v6(ifaces.iter().copied().next().unwrap())?,
+            _ => {
+                return Ok(Self::Multi {
+                    socket: socket.into(),
+                    ifaces,
+                })
+            }
+        }
+
+        Ok(Self::Single(socket.into()))
+    }
+
+    async fn into_async(self) -> Result<Ipv6MdnsSocket<AsyncUdpSocket>, std::io::Error> {
+        Ok(match self {
+            Self::Single(socket) => Ipv6MdnsSocket::Single(AsyncUdpSocket::from_std(socket)?),
+            Self::Multi { socket, ifaces } => Ipv6MdnsSocket::Multi {
+                socket: AsyncUdpSocket::from_std(socket)?,
+                ifaces,
+            },
         })
     }
 }
-impl MultiInterfaceIpv6Socket<AsyncUdpSocket> {
+impl Ipv6MdnsSocket<AsyncUdpSocket> {
     pub async fn send_to_multicast(
         &self,
         packet: &[u8],
         addr: impl ToSocketAddrs + Copy,
     ) -> Result<(), std::io::Error> {
-        for iface in self.ifaces.iter() {
-            unsafe {
-                let res = {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::io::AsRawFd;
-                        libc::setsockopt(
-                            self.socket.as_raw_fd(),
-                            libc::IPPROTO_IPV6,
-                            libc::IPV6_MULTICAST_IF,
-                            iface as *const _ as *const _,
-                            std::mem::size_of::<u32>() as libc::socklen_t,
-                        )
-                    }
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::io::AsRawHandle;
-                        libc::setsockopt(
-                            self.socket.as_raw_handle(),
-                            libc::IPPROTO_IPV6,
-                            libc::IPV6_MULTICAST_IF,
-                            iface as *const _ as *const _,
-                            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-                        )
-                    }
-                };
-                if res != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
+        match self {
+            Self::Single(socket) => {
+                socket.send_to(packet, addr).await?;
             }
 
-            self.socket.send_to(packet, addr).await?;
+            Self::Multi { socket, ifaces } => {
+                debug_assert!(ifaces.len() > 1);
+
+                for iface in ifaces.iter().copied() {
+                    socket.set_multicast_if_v6(iface)?;
+                    socket.send_to(packet, addr).await?;
+                }
+            }
         }
+
         Ok(())
+    }
+
+    fn socket(&self) -> &AsyncUdpSocket {
+        match self {
+            Self::Single(socket) => socket,
+            Self::Multi { socket, .. } => socket,
+        }
+    }
+}
+
+trait SetIpv6MulticastInterface {
+    fn set_multicast_if_v6(&self, iface: u32) -> Result<(), std::io::Error>;
+}
+impl SetIpv6MulticastInterface for AsyncUdpSocket {
+    fn set_multicast_if_v6(&self, iface: u32) -> Result<(), std::io::Error> {
+        let res = {
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::AsRawFd;
+                unsafe {
+                    libc::setsockopt(
+                        self.as_raw_fd(),
+                        libc::IPPROTO_IPV6,
+                        libc::IPV6_MULTICAST_IF,
+                        &iface as *const _ as *const _,
+                        std::mem::size_of::<u32>() as libc::socklen_t,
+                    )
+                }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                unsafe {
+                    libc::setsockopt(
+                        self.as_raw_handle(),
+                        libc::IPPROTO_IPV6,
+                        libc::IPV6_MULTICAST_IF,
+                        &iface as *const _ as *const _,
+                        std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                    )
+                }
+            }
+        };
+        if res == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
     }
 }

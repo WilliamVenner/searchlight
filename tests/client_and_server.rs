@@ -1,6 +1,7 @@
 use searchlight::{
     broadcast::{BroadcasterBuilder, ServiceBuilder},
     discovery::{DiscoveryBuilder, DiscoveryEvent},
+    net::IpVersion,
 };
 use std::{
     collections::BTreeSet,
@@ -30,13 +31,13 @@ fn client_and_server() {
                             Ipv6Addr::from_str("fe80::18e4:b943:8756:d855").unwrap(),
                         ))
                         .add_txt("key=value")
-                        .add_txt_truncate("key2=value2")
+                        .add_txt_truncated("key2=value2")
                         .build()
                         .unwrap(),
                 )
-                .build()
+                .build(IpVersion::Both)
                 .expect("Failed to create mDNS broadcaster")
-                .run_background(),
+                .run_in_background(),
         )));
 
         println!("Server is running");
@@ -48,10 +49,9 @@ fn client_and_server() {
             .service("_searchlight-test._udp.local")
             .unwrap()
             .loopback()
-            .any_ip()
-            .build()
+            .build(IpVersion::Both)
             .unwrap()
-            .run_background(move |event| {
+            .run_in_background(move |event| {
                 if let DiscoveryEvent::ResponderFound(responder)
                 | DiscoveryEvent::ResponderLost(responder) = &event
                 {

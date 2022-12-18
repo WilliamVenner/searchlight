@@ -28,7 +28,7 @@ pub struct Broadcaster {
     config: Arc<RwLock<BroadcasterConfig>>,
 }
 impl Broadcaster {
-    pub fn run_background(self) -> BroadcasterHandle {
+    pub fn run_in_background(self) -> BroadcasterHandle {
         let Broadcaster { socket, config } = self;
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();

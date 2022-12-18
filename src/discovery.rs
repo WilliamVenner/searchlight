@@ -27,7 +27,7 @@ pub struct Discovery {
     peer_window: Duration,
 }
 impl Discovery {
-    pub fn run_background<F>(self, handler: F) -> DiscoveryHandle
+    pub fn run_in_background<F>(self, handler: F) -> DiscoveryHandle
     where
         F: Fn(DiscoveryEvent) + Send + Sync + 'static,
     {

@@ -1,5 +1,8 @@
 use super::{service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
-use crate::{errors::BroadcasterBuilderError, socket::MdnsSocket};
+use crate::{
+    errors::BroadcasterBuilderError,
+    socket::{IpVersion, MdnsSocket, TargetInterface},
+};
 use std::{
     collections::BTreeSet,
     net::Ipv4Addr,
@@ -9,16 +12,16 @@ use std::{
 
 pub struct BroadcasterBuilder {
     services: BTreeSet<Service>,
-    interface_v4: Option<Ipv4Addr>,
-    interface_v6: Option<u32>,
+    interface_v4: TargetInterface<Ipv4Addr>,
+    interface_v6: TargetInterface<NonZeroU32>,
     loopback: bool,
 }
 impl BroadcasterBuilder {
     pub fn new() -> Self {
         Self {
             services: BTreeSet::new(),
-            interface_v4: None,
-            interface_v6: None,
+            interface_v4: TargetInterface::All,
+            interface_v6: TargetInterface::All,
             loopback: false,
         }
     }
@@ -33,46 +36,35 @@ impl BroadcasterBuilder {
         self
     }
 
-    pub fn interface_v4(mut self, interface: Ipv4Addr) -> Self {
-        self.interface_v4 = Some(interface);
+    pub fn interface_v4(mut self, interface: TargetInterface<Ipv4Addr>) -> Self {
+        self.interface_v4 = interface;
         self
     }
 
-    pub fn all_v4_interfaces(mut self) -> Self {
-        self.interface_v4 = None;
+    pub fn interface_v6(mut self, interface: TargetInterface<NonZeroU32>) -> Self {
+        self.interface_v6 = interface;
         self
     }
 
-    pub fn default_v4_interface(mut self) -> Self {
-        self.interface_v4 = Some(Ipv4Addr::UNSPECIFIED);
-        self
-    }
-
-    pub fn interface_v6(mut self, interface: NonZeroU32) -> Self {
-        self.interface_v6 = Some(interface.get());
-        self
-    }
-
-    pub fn all_v6_interfaces(mut self) -> Self {
-        self.interface_v6 = None;
-        self
-    }
-
-    pub fn default_v6_interface(mut self) -> Self {
-        self.interface_v6 = Some(0);
-        self
-    }
-
-    pub fn build(self) -> Result<Broadcaster, BroadcasterBuilderError> {
-        // TODO allow user to choose ipv4 only or ipv6 only
-        let socket = MdnsSocket::new(self.loopback, self.interface_v4, self.interface_v6)?;
+    pub fn build(self, ip_version: IpVersion) -> Result<Broadcaster, BroadcasterBuilderError> {
+        let BroadcasterBuilder {
+            services,
+            interface_v4,
+            interface_v6,
+            loopback,
+        } = self;
 
         Ok(Broadcaster {
-            socket,
+            socket: match ip_version {
+                IpVersion::V4 => MdnsSocket::new_v4(loopback, interface_v4)?,
+                IpVersion::V6 => MdnsSocket::new_v6(loopback, interface_v6)?,
+                IpVersion::Both => MdnsSocket::new(loopback, interface_v4, interface_v6)?,
+            },
+
             config: Arc::new(RwLock::new(BroadcasterConfig {
                 services: {
                     let mut dns_services = BTreeSet::new();
-                    for service in self.services {
+                    for service in services {
                         dns_services.insert(ServiceDnsResponse::try_from(service)?);
                     }
                     dns_services

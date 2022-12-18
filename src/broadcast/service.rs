@@ -313,7 +313,7 @@ impl ServiceBuilder {
     }
 
     #[inline(always)]
-    pub fn add_txt_truncate(mut self, record: impl IntoServiceTxt) -> Self {
+    pub fn add_txt_truncated(mut self, record: impl IntoServiceTxt) -> Self {
         self.0.txt.insert(record.into_service_txt());
         self
     }

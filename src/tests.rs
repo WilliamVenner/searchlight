@@ -14,7 +14,7 @@ fn test_dns_parser_backwards_compatibility() {
             Ipv6Addr::from_str("fe80::18e4:b943:8756:d855").unwrap(),
         ))
         .add_txt("key=value")
-        .add_txt_truncate("key2=value2")
+        .add_txt_truncated("key2=value2")
         .build()
         .unwrap()
         .dns_response()
