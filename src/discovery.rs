@@ -81,52 +81,29 @@ impl Discovery {
         loop {
             interval.tick().await;
 
-            let packet = {
-                // dns_parser version
-                /*
-                let mut builder = dns_parser::Builder::new_query(0, false);
-                builder.add_question(
-                    &service_name,
-                    false,
-                    dns_parser::QueryType::PTR,
-                    dns_parser::QueryClass::IN,
-                );
-                match builder.build() {
-                    Ok(packet) => packet,
-                    Err(_) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Packet was too large",
-                        ))
+            let packet = match DnsMessage::new()
+                .add_query({
+                    let mut query = DnsQuery::new();
+
+                    if let Some(service_name) = &service_name {
+                        query.set_name(service_name.clone());
                     }
-                }
-                */
 
-                // trust-dns version
-                match DnsMessage::new()
-                    .add_query({
-                        let mut query = DnsQuery::new();
+                    query
+                        .set_query_type(DnsRecordType::PTR)
+                        .set_query_class(DnsClass::IN)
+                        .set_mdns_unicast_response(false);
 
-                        if let Some(service_name) = &service_name {
-                            query.set_name(service_name.clone());
-                        }
-
-                        query
-                            .set_query_type(DnsRecordType::PTR)
-                            .set_query_class(DnsClass::IN)
-                            .set_mdns_unicast_response(false);
-
-                        query
-                    })
-                    .to_bytes()
-                {
-                    Ok(packet) => packet,
-                    Err(err) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Packet was too large: {err}"),
-                        ))
-                    }
+                    query
+                })
+                .to_bytes()
+            {
+                Ok(packet) => packet,
+                Err(err) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Packet was too large: {err}"),
+                    ));
                 }
             };
 

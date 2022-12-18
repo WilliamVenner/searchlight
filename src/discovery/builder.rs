@@ -74,8 +74,18 @@ pub struct DiscoveryInterfaceBuilderV4 {
     interface: Option<Ipv4Addr>,
 }
 impl DiscoveryInterfaceBuilderV4 {
-    pub fn interface(mut self, interface: Option<Ipv4Addr>) -> Self {
-        self.interface = interface;
+    pub fn interface(mut self, interface: Ipv4Addr) -> Self {
+        self.interface = Some(interface);
+        self
+    }
+
+    pub fn all_interfaces(mut self) -> Self {
+        self.interface = None;
+        self
+    }
+
+    pub fn default_interface(mut self) -> Self {
+        self.interface = Some(Ipv4Addr::UNSPECIFIED);
         self
     }
 
@@ -97,11 +107,21 @@ impl DiscoveryInterfaceBuilderV4 {
 
 pub struct DiscoveryInterfaceBuilderV6 {
     builder: DiscoveryBuilder,
-    interface: Option<NonZeroU32>,
+    interface: Option<u32>,
 }
 impl DiscoveryInterfaceBuilderV6 {
-    pub fn interface(mut self, interface: Option<NonZeroU32>) -> Self {
-        self.interface = interface;
+    pub fn interface(mut self, interface: NonZeroU32) -> Self {
+        self.interface = Some(interface.get());
+        self
+    }
+
+    pub fn all_interfaces(mut self) -> Self {
+        self.interface = None;
+        self
+    }
+
+    pub fn default_interface(mut self) -> Self {
+        self.interface = Some(0);
         self
     }
 
@@ -124,20 +144,40 @@ impl DiscoveryInterfaceBuilderV6 {
 pub struct DiscoveryInterfaceBuilderAny {
     builder: DiscoveryBuilder,
     interface_v4: Option<Ipv4Addr>,
-    interface_v6: Option<NonZeroU32>,
+    interface_v6: Option<u32>,
 }
 impl DiscoveryInterfaceBuilderAny {
-    pub fn interface_v4(mut self, interface: Option<Ipv4Addr>) -> Self {
-        self.interface_v4 = interface;
+    pub fn interface_v4(mut self, interface: Ipv4Addr) -> Self {
+        self.interface_v4 = Some(interface);
         self
     }
 
-    pub fn interface_v6(mut self, interface: Option<NonZeroU32>) -> Self {
-        self.interface_v6 = interface;
+    pub fn all_v4_interfaces(mut self) -> Self {
+        self.interface_v4 = None;
         self
     }
 
-    pub async fn build(self) -> Result<Discovery, std::io::Error> {
+    pub fn default_v4_interface(mut self) -> Self {
+        self.interface_v4 = Some(Ipv4Addr::UNSPECIFIED);
+        self
+    }
+
+    pub fn interface_v6(mut self, interface: NonZeroU32) -> Self {
+        self.interface_v6 = Some(interface.get());
+        self
+    }
+
+    pub fn all_v6_interfaces(mut self) -> Self {
+        self.interface_v6 = None;
+        self
+    }
+
+    pub fn default_v6_interface(mut self) -> Self {
+        self.interface_v6 = Some(0);
+        self
+    }
+
+    pub fn build(self) -> Result<Discovery, std::io::Error> {
         let DiscoveryBuilder {
             service_name,
             interval,
