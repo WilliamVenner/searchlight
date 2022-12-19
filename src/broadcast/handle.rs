@@ -55,7 +55,7 @@ impl BroadcasterHandle {
 	}
 
 	pub fn add_service(&self, service: Service) -> Result<(), ServiceDnsPacketError> {
-		match self.with_config(|broadcaster| Ok(broadcaster.write().unwrap().services.insert(service.try_into()?))) {
+		match self.with_config(|broadcaster| Ok(broadcaster.write().unwrap().services.replace(service.try_into()?))) {
 			Some(Ok(_)) | None => Ok(()),
 			Some(Err(err)) => Err(err),
 		}

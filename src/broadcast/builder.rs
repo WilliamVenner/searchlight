@@ -32,7 +32,7 @@ impl BroadcasterBuilder {
 	}
 
 	pub fn add_service(mut self, service: Service) -> Self {
-		self.services.insert(service);
+		self.services.replace(service);
 		self
 	}
 
@@ -65,7 +65,7 @@ impl BroadcasterBuilder {
 				services: {
 					let mut dns_services = BTreeSet::new();
 					for service in services {
-						dns_services.insert(ServiceDnsResponse::try_from(service)?);
+						dns_services.replace(ServiceDnsResponse::try_from(service)?);
 					}
 					dns_services
 				},

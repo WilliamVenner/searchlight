@@ -1,9 +1,14 @@
 use crate::socket::{AsyncMdnsSocket, MdnsSocket};
-use std::{sync::Arc, time::Duration};
+use std::{
+	collections::HashSet,
+	net::SocketAddr,
+	sync::Arc,
+	time::{Duration, Instant},
+};
 use trust_dns_client::{
-	op::{Message as DnsMessage, Query as DnsQuery},
+	op::{DnsResponse, Message as DnsMessage, MessageType as DnsMessageType, Query as DnsQuery},
 	rr::{DNSClass as DnsClass, Name as DnsName, RecordType as DnsRecordType},
-	serialize::binary::BinEncodable,
+	serialize::binary::{BinDecodable, BinEncodable},
 };
 
 mod builder;
@@ -17,14 +22,35 @@ mod handle;
 pub use handle::DiscoveryHandle;
 use handle::*;
 
-mod listen;
-pub use listen::Responder;
+mod presence;
+pub use presence::Responder;
+use presence::*;
+
+fn discovery_packet(unicast: bool, service_name: Option<&DnsName>) -> Result<Vec<u8>, std::io::Error> {
+	DnsMessage::new()
+		.add_query({
+			let mut query = DnsQuery::new();
+
+			if let Some(service_name) = service_name {
+				query.set_name(service_name.clone());
+			}
+
+			query
+				.set_query_type(DnsRecordType::PTR)
+				.set_query_class(DnsClass::IN)
+				.set_mdns_unicast_response(unicast);
+
+			query
+		})
+		.to_bytes()
+		.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("Discovery packet failed to serialize: {err}")))
+}
 
 pub struct Discovery {
 	socket: MdnsSocket,
 	service_name: Option<DnsName>,
 	interval: Duration,
-	peer_window: Duration,
+	max_ignored_packets: u8,
 }
 impl Discovery {
 	pub fn run_in_background<F>(self, handler: F) -> DiscoveryHandle
@@ -63,13 +89,10 @@ impl Discovery {
 			socket,
 			service_name,
 			interval,
-			peer_window,
+			max_ignored_packets,
 		} = self;
 
 		let socket = socket.into_async().await?;
-
-		let tick_loop = Self::tick_loop(service_name.clone(), interval, &socket);
-		let listen_loop = Self::listen_loop(service_name, handler, peer_window, &socket);
 
 		let shutdown = async move {
 			if let Some(shutdown_rx) = shutdown_rx {
@@ -81,43 +104,123 @@ impl Discovery {
 
 		tokio::select! {
 			biased;
-			res = tick_loop => res,
-			res = listen_loop => res,
+			res = Self::discovery_loop(handler, service_name, interval, max_ignored_packets, &socket) => res,
 			_ = shutdown => Ok(()),
 		}
 	}
 
-	async fn tick_loop(service_name: Option<DnsName>, interval: Duration, socket: &AsyncMdnsSocket) -> Result<(), std::io::Error> {
-		let mut interval = tokio::time::interval(interval);
-		interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+	async fn discovery_loop(
+		event_handler: EventHandler,
+		service_name: Option<DnsName>,
+		discovery_interval: Duration,
+		max_ignored_packets: u8,
+		socket: &AsyncMdnsSocket,
+	) -> Result<(), std::io::Error> {
+		let service_name = service_name.as_ref();
+
+		// Response listening
+		let mut socket_recv = socket.recv(vec![0; 4096]);
+
+		// Discovery
+		let discovery_packet = discovery_packet(false, service_name)?;
+		let mut discovery_interval = tokio::time::interval(discovery_interval);
+		discovery_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+		// Presence
+		let mut responder_memory = ResponderMemory { memory: HashSet::new() };
 
 		loop {
-			interval.tick().await;
+			tokio::select! {
+				biased; // Prefer handling packets
+				recv = socket_recv.recv_multicast() => {
+					let recv = recv?;
+					Self::recv_multicast(service_name, &event_handler, &mut responder_memory, recv).await;
+				}
 
-			let packet = match DnsMessage::new()
-				.add_query({
-					let mut query = DnsQuery::new();
+				_ = discovery_interval.tick() => {
+					// Send discovery packet!
+					socket.send_multicast(&discovery_packet).await?;
 
-					if let Some(service_name) = &service_name {
-						query.set_name(service_name.clone());
+					if max_ignored_packets == 0 {
+						continue;
 					}
 
-					query
-						.set_query_type(DnsRecordType::PTR)
-						.set_query_class(DnsClass::IN)
-						.set_mdns_unicast_response(false);
+					// Give responders a chance to respond
+					let mut deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+					loop {
+						let recv = match tokio::time::timeout_at(deadline, socket_recv.recv_multicast()).await {
+							Ok(Ok(recv)) => recv,
+							Ok(Err(err)) => return Err(err),
+							Err(_) => break,
+						};
 
-					query
-				})
-				.to_bytes()
-			{
-				Ok(packet) => packet,
-				Err(err) => {
-					return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Packet was too large: {err}")));
+						let forgiveness = tokio::time::Instant::now();
+						Self::recv_multicast(service_name, &event_handler, &mut responder_memory, recv).await;
+						deadline += forgiveness.elapsed(); // Add the time we spent processing the packet to the deadline
+					}
+
+					// Remove stale responders
+					responder_memory.memory.retain(|entry| {
+						let ignored_packets = entry.ignored_packets.get();
+						if ignored_packets < max_ignored_packets {
+							entry.ignored_packets.set(ignored_packets + 1);
+							true
+						} else {
+							let event_handler = event_handler.clone();
+							let responder = entry.inner.clone();
+							tokio::task::spawn_blocking(move || event_handler(DiscoveryEvent::ResponderLost(responder)));
+							false
+						}
+					});
 				}
+			}
+		}
+	}
+
+	async fn recv_multicast(
+		service_name: Option<&DnsName>,
+		event_handler: &EventHandler,
+		response_memory_bank: &mut ResponderMemory,
+		recv: ((usize, SocketAddr), &[u8]),
+	) {
+		let ((count, addr), packet) = recv;
+
+		if count == 0 {
+			return;
+		}
+
+		let response = match DnsMessage::from_bytes(&packet[..count]) {
+			Ok(response) if response.message_type() == DnsMessageType::Response => DnsResponse::from(response),
+			_ => return,
+		};
+
+		if let Some(service_name) = service_name {
+			if !response.answers().iter().any(|answer| answer.name() == service_name) {
+				// This response does not contain the service we are looking for.
+				return;
+			}
+		}
+
+		let event = {
+			let old = response_memory_bank.get(&addr).map(|response_memory| response_memory.inner.clone());
+
+			let new = {
+				let responder = Arc::new(Responder {
+					addr,
+					last_response: response,
+					last_responded: Instant::now(),
+				});
+				response_memory_bank.replace(responder.clone());
+				responder
 			};
 
-			socket.send_multicast(&packet).await?;
-		}
+			match old {
+				Some(old) => DiscoveryEvent::ResponseUpdate { old, new },
+				None => DiscoveryEvent::ResponderFound(new),
+			}
+		};
+
+		let event_handler = event_handler.clone();
+		tokio::task::spawn_blocking(move || event_handler(event)).await.ok();
 	}
 }
