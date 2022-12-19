@@ -1,5 +1,5 @@
 use crate::{
-	errors::{BadNameError, ServiceBuilderError, ServiceDnsPacketError},
+	errors::{BadNameError, ServiceBuilderError, ServiceDnsPacketBuilderError},
 	util::IntoDnsName,
 };
 use std::{
@@ -89,7 +89,7 @@ pub struct ServiceDnsResponse {
 	pub dns_response: DnsMessage,
 }
 impl TryFrom<Service> for ServiceDnsResponse {
-	type Error = ServiceDnsPacketError;
+	type Error = ServiceDnsPacketBuilderError;
 
 	fn try_from(service: Service) -> Result<Self, Self::Error> {
 		service.dns_response().map(|dns_response| Self { service, dns_response })
@@ -171,7 +171,7 @@ impl Service {
 		&self.txt
 	}
 
-	pub fn dns_response(&self) -> Result<DnsMessage, ServiceDnsPacketError> {
+	pub fn dns_response(&self) -> Result<DnsMessage, ServiceDnsPacketBuilderError> {
 		let mut response = DnsMessage::new();
 
 		response.set_header({
@@ -182,7 +182,7 @@ impl Service {
 			header.set_answer_count(
 				(self.ip_addresses.len() + 1 + 1 + 1)
 					.try_into()
-					.map_err(|_| ServiceDnsPacketError::TooManyIpAddresses)?,
+					.map_err(|_| ServiceDnsPacketBuilderError::TooManyIpAddresses)?,
 			);
 			header
 		});

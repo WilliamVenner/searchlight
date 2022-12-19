@@ -1,6 +1,6 @@
 use super::{BroadcasterConfig, Service};
 use crate::{
-	errors::{BadNameError, ServiceDnsPacketError},
+	errors::{BadNameError, ServiceDnsPacketBuilderError},
 	util::IntoDnsName,
 };
 use std::sync::{Arc, RwLock};
@@ -54,7 +54,7 @@ impl BroadcasterHandle {
 		res
 	}
 
-	pub fn add_service(&self, service: Service) -> Result<(), ServiceDnsPacketError> {
+	pub fn add_service(&self, service: Service) -> Result<(), ServiceDnsPacketBuilderError> {
 		match self.with_config(|broadcaster| Ok(broadcaster.write().unwrap().services.replace(service.try_into()?))) {
 			Some(Ok(_)) | None => Ok(()),
 			Some(Err(err)) => Err(err),

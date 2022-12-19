@@ -16,7 +16,7 @@ pub enum ServiceBuilderError {
 }
 
 #[derive(Debug, Error)]
-pub enum ServiceDnsPacketError {
+pub enum ServiceDnsPacketBuilderError {
 	#[error("There are too many IP addresses to advertise")]
 	TooManyIpAddresses,
 }
@@ -24,7 +24,7 @@ pub enum ServiceDnsPacketError {
 #[derive(Debug, Error)]
 pub enum BroadcasterBuilderError {
 	#[error("{0}")]
-	ServiceDnsPacketError(#[from] ServiceDnsPacketError),
+	ServiceDnsPacketBuilderError(#[from] ServiceDnsPacketBuilderError),
 
 	#[error("I/O error: {0}")]
 	IoError(#[from] std::io::Error),
