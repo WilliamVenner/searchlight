@@ -1,6 +1,6 @@
 use super::{BroadcasterConfig, Service};
 use crate::{
-	errors::{BadDnsNameError, ServiceDnsPacketBuilderError},
+	errors::{BadDnsNameError, ServiceDnsPacketBuilderError, ShutdownError},
 	util::IntoDnsName,
 };
 use std::sync::{Arc, RwLock};
@@ -13,23 +13,30 @@ pub(super) struct BroadcasterHandleInner {
 
 pub(super) struct BroadcasterHandleDrop(pub(super) Option<BroadcasterHandleInner>);
 impl BroadcasterHandleDrop {
-	fn shutdown(&mut self) -> std::thread::Result<Result<(), std::io::Error>> {
+	fn shutdown(&mut self) -> Result<(), ShutdownError> {
 		let BroadcasterHandleInner { thread, shutdown_tx, .. } = match self.0.take() {
 			Some(inner) => inner,
-			None => return Ok(Ok(())),
+			None => return Ok(()),
 		};
 
 		if thread.is_finished() {
-			return Ok(Ok(()));
+			return Ok(());
 		}
 
 		shutdown_tx.send(()).ok();
-		thread.join()
+
+		match thread.join() {
+			Ok(Ok(_)) => Ok(()),
+			Ok(Err(err)) => Err(ShutdownError::IoError(err)),
+			Err(err) => Err(ShutdownError::ThreadJoinError(err)),
+		}
 	}
 }
 impl Drop for BroadcasterHandleDrop {
 	fn drop(&mut self) {
-		self.shutdown().unwrap().unwrap();
+		if let Err(ShutdownError::ThreadJoinError(err)) = self.shutdown() {
+			Err::<(), _>(err).unwrap();
+		}
 	}
 }
 
@@ -48,7 +55,7 @@ impl BroadcasterHandle {
 		Some(handle(config))
 	}
 
-	pub fn shutdown(mut self) -> std::thread::Result<Result<(), std::io::Error>> {
+	pub fn shutdown(mut self) -> Result<(), ShutdownError> {
 		let res = self.0.shutdown();
 		std::mem::forget(self.0);
 		res

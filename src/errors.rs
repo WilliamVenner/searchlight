@@ -1,3 +1,5 @@
+use std::any::Any;
+
 #[derive(Debug)]
 pub struct BadDnsNameError;
 impl std::fmt::Display for BadDnsNameError {
@@ -27,5 +29,14 @@ pub enum BroadcasterBuilderError {
 	ServiceDnsPacketBuilderError(#[from] ServiceDnsPacketBuilderError),
 
 	#[error("I/O error: {0}")]
+	IoError(#[from] std::io::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum ShutdownError {
+	#[error("Thread panicked")]
+	ThreadJoinError(Box<dyn Any + Send + 'static>),
+
+	#[error("I/O error occurred during Searchlight thread execution: {0}")]
 	IoError(#[from] std::io::Error),
 }

@@ -77,7 +77,7 @@ fn client_and_server() {
 							println!("Got ResponderFound from server");
 							// Shut down the server so we can get a ResponderLost event
 							if let Some(server) = server_ref.lock().unwrap().take() {
-								server.shutdown().unwrap().unwrap();
+								server.shutdown().unwrap();
 							}
 						} else if matches!(&event, DiscoveryEvent::ResponderLost(_)) {
 							println!("Got ResponderLost from server");
