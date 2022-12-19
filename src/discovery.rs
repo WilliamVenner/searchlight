@@ -1,6 +1,5 @@
 use crate::socket::{AsyncMdnsSocket, MdnsSocket};
 use std::{
-	collections::HashSet,
 	net::SocketAddr,
 	sync::Arc,
 	time::{Duration, Instant},
@@ -127,7 +126,7 @@ impl Discovery {
 		discovery_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
 		// Presence
-		let mut responder_memory = ResponderMemory { memory: HashSet::new() };
+		let mut responder_memory = ResponderMemory::default();
 
 		loop {
 			tokio::select! {
@@ -160,18 +159,7 @@ impl Discovery {
 					}
 
 					// Remove stale responders
-					responder_memory.memory.retain(|entry| {
-						let ignored_packets = entry.ignored_packets.get();
-						if ignored_packets < max_ignored_packets {
-							entry.ignored_packets.set(ignored_packets + 1);
-							true
-						} else {
-							let event_handler = event_handler.clone();
-							let responder = entry.inner.clone();
-							tokio::task::spawn_blocking(move || event_handler(DiscoveryEvent::ResponderLost(responder)));
-							false
-						}
-					});
+					responder_memory.sweep(&event_handler, max_ignored_packets);
 				}
 			}
 		}
