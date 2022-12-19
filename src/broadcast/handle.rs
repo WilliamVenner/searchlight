@@ -1,6 +1,6 @@
 use super::{BroadcasterConfig, Service};
 use crate::{
-	errors::{BadNameError, ServiceDnsPacketBuilderError},
+	errors::{BadDnsNameError, ServiceDnsPacketBuilderError},
 	util::IntoDnsName,
 };
 use std::sync::{Arc, RwLock};
@@ -61,9 +61,9 @@ impl BroadcasterHandle {
 		}
 	}
 
-	pub fn remove_named_service(&self, service_type: impl IntoDnsName, service_name: impl IntoDnsName) -> Result<bool, BadNameError> {
-		let service_type = service_type.into_fqdn().map_err(|_| BadNameError)?;
-		let service_name = service_name.into_fqdn().map_err(|_| BadNameError)?;
+	pub fn remove_named_service(&self, service_type: impl IntoDnsName, service_name: impl IntoDnsName) -> Result<bool, BadDnsNameError> {
+		let service_type = service_type.into_fqdn().map_err(|_| BadDnsNameError)?;
+		let service_name = service_name.into_fqdn().map_err(|_| BadDnsNameError)?;
 
 		let mut found = false;
 		self.with_config(|broadcaster| {
@@ -80,8 +80,8 @@ impl BroadcasterHandle {
 		Ok(found)
 	}
 
-	pub fn remove_service_type(&self, service_type: impl IntoDnsName) -> Result<bool, BadNameError> {
-		let service_type = service_type.into_fqdn().map_err(|_| BadNameError)?;
+	pub fn remove_service_type(&self, service_type: impl IntoDnsName) -> Result<bool, BadDnsNameError> {
+		let service_type = service_type.into_fqdn().map_err(|_| BadDnsNameError)?;
 
 		let mut found = false;
 		self.with_config(|broadcaster| {

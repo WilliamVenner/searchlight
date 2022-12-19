@@ -1,6 +1,6 @@
 use super::Discovery;
 use crate::{
-	errors::BadNameError,
+	errors::BadDnsNameError,
 	socket::{IpVersion, MdnsSocket, TargetInterface},
 	util::IntoDnsName,
 };
@@ -27,8 +27,8 @@ impl DiscoveryBuilder {
 		}
 	}
 
-	pub fn service(mut self, service_name: impl IntoDnsName) -> Result<Self, BadNameError> {
-		self.service_name = Some(service_name.into_fqdn().map_err(|_| BadNameError)?);
+	pub fn service(mut self, service_name: impl IntoDnsName) -> Result<Self, BadDnsNameError> {
+		self.service_name = Some(service_name.into_fqdn().map_err(|_| BadDnsNameError)?);
 		Ok(self)
 	}
 

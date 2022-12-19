@@ -1,5 +1,5 @@
 use crate::{
-	errors::{BadNameError, ServiceBuilderError, ServiceDnsPacketBuilderError},
+	errors::{BadDnsNameError, ServiceBuilderError, ServiceDnsPacketBuilderError},
 	util::IntoDnsName,
 };
 use std::{
@@ -255,13 +255,13 @@ impl Service {
 
 pub struct ServiceBuilder(Service);
 impl ServiceBuilder {
-	pub fn new(service_type: impl IntoDnsName, service_name: impl IntoDnsName, port: u16) -> Result<Self, BadNameError> {
-		let service_type = service_type.into_fqdn().map_err(|_| BadNameError)?;
-		let service_name = service_name.into_fqdn().map_err(|_| BadNameError)?;
+	pub fn new(service_type: impl IntoDnsName, service_name: impl IntoDnsName, port: u16) -> Result<Self, BadDnsNameError> {
+		let service_type = service_type.into_fqdn().map_err(|_| BadDnsNameError)?;
+		let service_name = service_name.into_fqdn().map_err(|_| BadDnsNameError)?;
 		Ok(Self(Service {
-			service_id: format!("{service_name}{service_type}").into_fqdn().map_err(|_| BadNameError)?,
+			service_id: format!("{service_name}{service_type}").into_fqdn().map_err(|_| BadDnsNameError)?,
 
-			service_hostname: format!("{service_name}local.").into_fqdn().map_err(|_| BadNameError)?,
+			service_hostname: format!("{service_name}local.").into_fqdn().map_err(|_| BadDnsNameError)?,
 
 			service_type,
 			service_name,

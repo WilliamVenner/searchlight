@@ -1,11 +1,11 @@
 #[derive(Debug)]
-pub struct BadNameError;
-impl std::fmt::Display for BadNameError {
+pub struct BadDnsNameError;
+impl std::fmt::Display for BadDnsNameError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str("Bad DNS name")
 	}
 }
-impl std::error::Error for BadNameError {}
+impl std::error::Error for BadDnsNameError {}
 
 #[derive(Debug, Error)]
 pub enum ServiceBuilderError {
