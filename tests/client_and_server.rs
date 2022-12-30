@@ -1,18 +1,18 @@
 use searchlight::{
 	broadcast::{BroadcasterBuilder, ServiceBuilder},
 	discovery::{DiscoveryBuilder, DiscoveryEvent},
-	net::IpVersion,
+	net::{IpVersion, Ipv6Interface, TargetInterface},
 };
 use std::{
 	collections::BTreeSet,
 	net::{IpAddr, Ipv4Addr, Ipv6Addr},
+	num::NonZeroU32,
 	str::FromStr,
 	sync::{Arc, Mutex},
 	time::Duration,
 };
 
-#[test]
-fn client_and_server() {
+fn client_and_server(ip_version: IpVersion) {
 	let (test_tx, test_rx) = std::sync::mpsc::sync_channel(0);
 
 	std::thread::spawn(move || {
@@ -23,6 +23,8 @@ fn client_and_server() {
 		let server = Arc::new(Mutex::new(Some(
 			BroadcasterBuilder::new()
 				.loopback()
+				.interface_v4(TargetInterface::Specific(Ipv4Addr::LOCALHOST))
+				.interface_v6(TargetInterface::Specific(Ipv6Interface::from_raw(NonZeroU32::new(1).unwrap())))
 				.add_service(
 					ServiceBuilder::new("_searchlight-test._udp.local", "searchlighttest", 1337)
 						.unwrap()
@@ -33,7 +35,7 @@ fn client_and_server() {
 						.build()
 						.unwrap(),
 				)
-				.build(IpVersion::Both)
+				.build(ip_version)
 				.expect("Failed to create mDNS broadcaster")
 				.run_in_background(),
 		)));
@@ -47,7 +49,9 @@ fn client_and_server() {
 			.service("_searchlight-test._udp.local")
 			.unwrap()
 			.loopback()
-			.build(IpVersion::Both)
+			.interface_v4(TargetInterface::Specific(Ipv4Addr::LOCALHOST))
+			.interface_v6(TargetInterface::Specific(Ipv6Interface::from_raw(NonZeroU32::new(1).unwrap())))
+			.build(ip_version)
 			.unwrap()
 			.run_in_background(move |event| {
 				if let DiscoveryEvent::ResponderFound(responder) | DiscoveryEvent::ResponderLost(responder) = &event {
@@ -110,4 +114,14 @@ fn client_and_server() {
 	test_rx
 		.recv_timeout(Duration::from_secs(30))
 		.expect("Timed out waiting for test to finish");
+}
+
+#[test]
+fn client_and_server_v4() {
+	client_and_server(IpVersion::V4);
+}
+
+#[test]
+fn client_and_server_v6() {
+	client_and_server(IpVersion::V6);
 }
