@@ -122,6 +122,7 @@ fn client_and_server_v4() {
 }
 
 #[test]
+#[cfg(not(github_ci))]
 fn client_and_server_v6() {
 	client_and_server(IpVersion::V6);
 }
