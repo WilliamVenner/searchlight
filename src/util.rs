@@ -4,7 +4,7 @@ use trust_dns_client::{
 	rr::{IntoName, Name as DnsName},
 };
 
-pub fn iface_v6_name_to_index(name: &str) -> Result<NonZeroU32, std::io::Error> {
+pub(crate) fn iface_v6_name_to_index(name: &str) -> Result<NonZeroU32, std::io::Error> {
 	use std::ffi::CString;
 
 	#[cfg(windows)]

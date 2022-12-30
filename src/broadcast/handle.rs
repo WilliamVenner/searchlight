@@ -19,11 +19,9 @@ impl BroadcasterHandleDrop {
 			None => return Ok(()),
 		};
 
-		if thread.is_finished() {
-			return Ok(());
+		if !thread.is_finished() {
+			shutdown_tx.send(()).ok();
 		}
-
-		shutdown_tx.send(()).ok();
 
 		match thread.join() {
 			Ok(Ok(_)) => Ok(()),

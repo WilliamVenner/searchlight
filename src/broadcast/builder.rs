@@ -1,27 +1,26 @@
 use super::{service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
 use crate::{
 	errors::BroadcasterBuilderError,
-	socket::{IpVersion, MdnsSocket, TargetInterface},
+	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
+	socket::MdnsSocket,
 };
 use std::{
 	collections::BTreeSet,
-	net::Ipv4Addr,
-	num::NonZeroU32,
 	sync::{Arc, RwLock},
 };
 
 pub struct BroadcasterBuilder {
 	services: BTreeSet<Service>,
-	interface_v4: TargetInterface<Ipv4Addr>,
-	interface_v6: TargetInterface<NonZeroU32>,
+	interface_v4: TargetInterfaceV4,
+	interface_v6: TargetInterfaceV6,
 	loopback: bool,
 }
 impl BroadcasterBuilder {
 	pub fn new() -> Self {
 		Self {
 			services: BTreeSet::new(),
-			interface_v4: TargetInterface::All,
-			interface_v6: TargetInterface::All,
+			interface_v4: TargetInterfaceV4::All,
+			interface_v6: TargetInterfaceV6::All,
 			loopback: false,
 		}
 	}
@@ -36,12 +35,12 @@ impl BroadcasterBuilder {
 		self
 	}
 
-	pub fn interface_v4(mut self, interface: TargetInterface<Ipv4Addr>) -> Self {
+	pub fn interface_v4(mut self, interface: TargetInterfaceV4) -> Self {
 		self.interface_v4 = interface;
 		self
 	}
 
-	pub fn interface_v6(mut self, interface: TargetInterface<NonZeroU32>) -> Self {
+	pub fn interface_v6(mut self, interface: TargetInterfaceV6) -> Self {
 		self.interface_v6 = interface;
 		self
 	}

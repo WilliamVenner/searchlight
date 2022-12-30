@@ -115,7 +115,7 @@ impl Broadcaster {
 					if query.mdns_unicast_response() {
 						tx.send_to(&send_buf, addr).await?;
 					} else {
-						tx.send_multicast(&send_buf).await?;
+						dbg!(tx.send_multicast(&send_buf).await)?;
 					}
 				}
 			}

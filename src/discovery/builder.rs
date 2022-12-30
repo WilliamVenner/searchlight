@@ -1,18 +1,19 @@
 use super::Discovery;
 use crate::{
 	errors::BadDnsNameError,
-	socket::{IpVersion, MdnsSocket, TargetInterface},
+	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
+	socket::MdnsSocket,
 	util::IntoDnsName,
 };
-use std::{net::Ipv4Addr, num::NonZeroU32, time::Duration};
+use std::time::Duration;
 use trust_dns_client::rr::Name as DnsName;
 
 pub struct DiscoveryBuilder {
 	service_name: Option<DnsName>,
 	interval: Duration,
 	loopback: bool,
-	interface_v4: TargetInterface<Ipv4Addr>,
-	interface_v6: TargetInterface<NonZeroU32>,
+	interface_v4: TargetInterfaceV4,
+	interface_v6: TargetInterfaceV6,
 	max_ignored_packets: u8,
 }
 impl DiscoveryBuilder {
@@ -21,8 +22,8 @@ impl DiscoveryBuilder {
 			service_name: None,
 			interval: Duration::from_secs(10),
 			loopback: false,
-			interface_v4: TargetInterface::All,
-			interface_v6: TargetInterface::All,
+			interface_v4: TargetInterfaceV4::All,
+			interface_v6: TargetInterfaceV6::All,
 			max_ignored_packets: 2,
 		}
 	}
@@ -50,12 +51,12 @@ impl DiscoveryBuilder {
 		self
 	}
 
-	pub fn interface_v4(mut self, interface: TargetInterface<Ipv4Addr>) -> Self {
+	pub fn interface_v4(mut self, interface: TargetInterfaceV4) -> Self {
 		self.interface_v4 = interface;
 		self
 	}
 
-	pub fn interface_v6(mut self, interface: TargetInterface<NonZeroU32>) -> Self {
+	pub fn interface_v6(mut self, interface: TargetInterfaceV6) -> Self {
 		self.interface_v6 = interface;
 		self
 	}
