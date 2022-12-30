@@ -1,7 +1,7 @@
 <p align="center">
+    <img alt="License" src="https://img.shields.io/crates/l/searchlight"/>
     <a href="https://crates.io/crates/searchlight"><img alt="crates.io" src="https://img.shields.io/crates/v/searchlight.svg"/></a>
     <a href="https://docs.rs/searchlight/"><img alt="docs.rs" src="https://docs.rs/searchlight/badge.svg"/></a>
-    <img alt="License" src="https://img.shields.io/crates/l/searchlight"/>
     <a href="https://github.com/WilliamVenner/searchlight/actions/workflows/ci.yml"><img alt="Workflow Status" src="https://github.com/WilliamVenner/searchlight/workflows/ci/badge.svg"></a>
 </p>
 
@@ -28,7 +28,7 @@ WiFi, Bluetooth, Chromecast, etc.
 - **👻 Background runtime** - Discovery and broadcasting can both run in the background on separate threads, providing a handle to gracefully shut down if necessary.
 - **📨 UDP** - All networking, including discovery and broadcasting, is connectionless and done over UDP.
 - **🔁 Loopback** - Support for receiving packets sent by the same socket, intended to be used in tests.
-- **🎯 Interface targeting** - Support for targeting a specific network interface(s) for discovery and broadcasting.
+- **🎯 Interface targeting** - Support for targeting specific network interface(s) for discovery and broadcasting.
 
 # Usage
 
@@ -43,7 +43,7 @@ To learn more about how to use Searchlight, see the [documentation](https://docs
 
 # Examples
 
-## Discovery
+## 👽 Discovery
 
 Find all Chromecasts on the network.
 
@@ -97,7 +97,7 @@ DiscoveryBuilder::new()
     .unwrap();
 ```
 
-## Broadcasting
+## 📡 Broadcasting
 
 Broadcast a service on the network, and verify that it can be discovered.
 

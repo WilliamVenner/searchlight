@@ -21,7 +21,7 @@
 //! - **👻 Background runtime** - Discovery and broadcasting can both run in the background on separate threads, providing a handle to gracefully shut down if necessary.
 //! - **📨 UDP** - All networking, including discovery and broadcasting, is connectionless and done over UDP.
 //! - **🔁 Loopback** - Support for receiving packets sent by the same socket, intended to be used in tests.
-//! - **🎯 Interface targeting** - Support for targeting a specific network interface(s) for discovery and broadcasting.
+//! - **🎯 Interface targeting** - Support for targeting specific network interface(s) for discovery and broadcasting.
 //!
 //! # Feature flags
 //!
