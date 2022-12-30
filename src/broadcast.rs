@@ -8,6 +8,8 @@ use trust_dns_client::{
 	serialize::binary::{BinDecodable, BinEncodable, BinEncoder},
 };
 
+pub mod errors;
+
 mod builder;
 pub use builder::BroadcasterBuilder;
 

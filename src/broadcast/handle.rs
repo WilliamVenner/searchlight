@@ -1,6 +1,6 @@
-use super::{BroadcasterConfig, Service};
+use super::{errors::ServiceDnsPacketBuilderError, BroadcasterConfig, Service};
 use crate::{
-	errors::{BadDnsNameError, ServiceDnsPacketBuilderError, ShutdownError},
+	errors::{BadDnsNameError, ShutdownError},
 	util::IntoDnsName,
 };
 use std::sync::{Arc, RwLock};

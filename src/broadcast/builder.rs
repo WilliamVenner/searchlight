@@ -1,6 +1,5 @@
-use super::{service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
+use super::{errors::BroadcasterBuilderError, service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
 use crate::{
-	errors::BroadcasterBuilderError,
 	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
 	socket::MdnsSocket,
 };

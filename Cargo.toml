@@ -2,12 +2,21 @@
 name = "searchlight"
 version = "0.1.0"
 edition = "2021"
-description = "📡 Rust mDNS library designed with user interfaces in mind [WIP]"
+description = "📡 Rust mDNS library designed with user interfaces in mind"
 authors = ["William Venner <william@venner.io>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WilliamVenner/searchlight"
 keywords = ["mdns", "dns", "discovery", "lan", "zeroconf"]
 categories = ["network-programming", "asynchronous"]
+
+[features]
+default = ["discovery", "broadcast"]
+discovery = []
+broadcast = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros"] }

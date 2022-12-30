@@ -1,7 +1,5 @@
-use crate::{
-	errors::{BadDnsNameError, ServiceBuilderError, ServiceDnsPacketBuilderError},
-	util::IntoDnsName,
-};
+use super::errors::{ServiceBuilderError, ServiceDnsPacketBuilderError};
+use crate::{errors::BadDnsNameError, util::IntoDnsName};
 use std::{
 	borrow::{Borrow, Cow},
 	collections::BTreeSet,
