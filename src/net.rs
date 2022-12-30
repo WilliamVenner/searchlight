@@ -26,6 +26,21 @@ impl Ipv6Interface {
 		Ok(Self(crate::util::iface_v6_name_to_index(name)?))
 	}
 
+	/// Attempts to resolve the interface index from the given interface address.
+	pub fn from_addr(addr: &Ipv6Addr) -> Result<Self, std::io::Error> {
+		if_addrs::get_if_addrs()?
+			.into_iter()
+			.find_map(|iface| {
+				if let IpAddr::V6(iface_addr) = iface.ip() {
+					if iface_addr == *addr {
+						return Self::from_name(&iface.name).ok();
+					}
+				}
+				None
+			})
+			.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Interface not found"))
+	}
+
 	/// Returns the IPv6 addresses of the interface.
 	pub fn addrs(&self) -> Result<Vec<Ipv6Addr>, std::io::Error> {
 		Ok(if_addrs::get_if_addrs()?
