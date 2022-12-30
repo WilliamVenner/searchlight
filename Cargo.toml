@@ -1,8 +1,8 @@
 [package]
 name = "searchlight"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "📡 Rust mDNS library designed with user interfaces in mind"
+description = "📡 Rust mDNS server & client library designed with user interfaces in mind"
 authors = ["William Venner <william@venner.io>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WilliamVenner/searchlight"

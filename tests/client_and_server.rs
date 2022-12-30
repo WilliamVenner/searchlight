@@ -68,7 +68,7 @@ fn client_and_server() {
 
 					let is_test_responder = responder
 						.last_response
-						.answers()
+						.additionals()
 						.iter()
 						.any(|answer| answer.name().to_string() == "searchlighttest._searchlight-test._udp.local.");
 

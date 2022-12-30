@@ -32,8 +32,14 @@ impl Drop for DiscoveryHandleDrop {
 	}
 }
 
+/// A handle to a [`Discovery`](super::Discovery) instance that is running in the background.
+///
+/// You can use this handle to shut down the discovery instance remotely.
 pub struct DiscoveryHandle(pub(super) DiscoveryHandleDrop);
 impl DiscoveryHandle {
+	/// Shuts down the discovery instance if it is still running.
+	///
+	/// This function will block until the discovery instance has shut down, and will return an error if the shutdown failed, or the discovery instance encountered a fatal error during its lifetime.
 	pub fn shutdown(mut self) -> Result<(), ShutdownError> {
 		let res = self.0.shutdown();
 		std::mem::forget(self.0);

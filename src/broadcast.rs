@@ -1,3 +1,63 @@
+//! # mDNS Broadcasting
+//!
+//! This module provides a way to respond to mDNS queries on the network.
+//!
+//! In other words, this module provides an _mDNS server_.
+//!
+//! # Example
+//!
+//! ```rust, no_run
+//! use searchlight::{
+//!     broadcast::{BroadcasterBuilder, ServiceBuilder},
+//!     discovery::{DiscoveryBuilder, DiscoveryEvent},
+//!     net::IpVersion,
+//! };
+//! use std::{
+//!     net::{IpAddr, Ipv4Addr},
+//!     str::FromStr,
+//! };
+//!
+//! let (found_tx, found_rx) = std::sync::mpsc::sync_channel(0);
+//!
+//! let broadcaster = BroadcasterBuilder::new()
+//!     .loopback()
+//!     .add_service(
+//!         ServiceBuilder::new("_searchlight._udp.local.", "HELLO-WORLD", 1234)
+//!             .unwrap()
+//!             .add_ip_address(IpAddr::V4(Ipv4Addr::from_str("192.168.1.69").unwrap()))
+//!             .add_txt_truncated("key=value")
+//!             .add_txt_truncated("key2=value2")
+//!             .build()
+//!             .unwrap(),
+//!     )
+//!     .build(IpVersion::V4)
+//!     .unwrap()
+//!     .run_in_background();
+//!
+//! let discovery = DiscoveryBuilder::new()
+//!     .loopback()
+//!     .service("_searchlight._udp.local.")
+//!     .unwrap()
+//!     .build(IpVersion::V4)
+//!     .unwrap()
+//!     .run_in_background(move |event| {
+//!         if let DiscoveryEvent::ResponderFound(responder) = event {
+//!             found_tx.try_send(responder).ok();
+//!         }
+//!     });
+//!
+//! println!("Waiting for discovery to find responder...");
+//!
+//! println!("{:#?}", found_rx.recv().unwrap());
+//!
+//! println!("Shutting down...");
+//!
+//! broadcaster.shutdown().unwrap();
+//! discovery.shutdown().unwrap();
+//!
+//! println!("Done!");
+//! ```
+
 use crate::socket::{AsyncMdnsSocket, MdnsSocket, MdnsSocketRecv};
 use std::{
 	collections::BTreeSet,
@@ -8,6 +68,7 @@ use trust_dns_client::{
 	serialize::binary::{BinDecodable, BinEncodable, BinEncoder},
 };
 
+/// Errors that can occur while broadcasting or initializing a broadcaster.
 pub mod errors;
 
 mod builder;
@@ -25,11 +86,19 @@ pub(crate) struct BroadcasterConfig {
 	services: BTreeSet<ServiceDnsResponse>,
 }
 
+/// A built mDNS broadcaster (server) instance, ready to be started.
+///
+/// You can choose to run broadcasting on the current thread, or in the background, using [`Broadcaster::run`] or [`Broadcaster::run_in_background`].
+///
+/// A `Broadcaster` can be built using [`BroadcasterBuilder`].
 pub struct Broadcaster {
 	socket: MdnsSocket,
 	config: Arc<RwLock<BroadcasterConfig>>,
 }
 impl Broadcaster {
+	/// Run broadcasting on a new thread; in the background.
+	///
+	/// Returns a [`BroadcasterHandle`] that can be used to cleanly shut down the background thread.
 	pub fn run_in_background(self) -> BroadcasterHandle {
 		let Broadcaster { socket, config } = self;
 
@@ -51,6 +120,9 @@ impl Broadcaster {
 		BroadcasterHandle(BroadcasterHandleDrop(Some(BroadcasterHandleInner { config, thread, shutdown_tx })))
 	}
 
+	/// Run broadcasting on the current thread.
+	///
+	/// This will start a new Tokio runtime on the current thread and block until a fatal error occurs.
 	pub fn run(self) -> Result<(), std::io::Error> {
 		let Broadcaster { socket, config } = self;
 
@@ -104,13 +176,19 @@ impl Broadcaster {
 				None => continue,
 			};
 
-			for service in config
-				.read()
-				.unwrap()
-				.services
-				.iter()
-				.filter(|service| service.service_type() == query.name())
-			{
+			for service in config.read().unwrap().services.iter().filter(|service| {
+				if service.service_type() == query.name() {
+					return true;
+				}
+
+				if let Some(subtype_suffix) = &service.service_subtype_suffix {
+					if query.name().to_utf8().ends_with(subtype_suffix) {
+						return true;
+					}
+				}
+
+				false
+			}) {
 				send_buf.clear();
 
 				if service.dns_response.emit(&mut BinEncoder::new(&mut send_buf)).is_ok() {

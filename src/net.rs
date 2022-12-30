@@ -1,74 +1,109 @@
+//! Networking utilities and abstractions
+
 use std::{
 	collections::BTreeSet,
 	net::{IpAddr, Ipv4Addr, Ipv6Addr},
 	num::NonZeroU32,
 };
 
+/// The [`if_addrs`](https://crates.io/crates/if_addrs) crate is used to discover network interfaces on the system.
+///
+/// Here is a re-export for your convenience.
 pub use if_addrs;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A wrapper around a raw IPv6 interface index.
+///
+/// With IPv6, interfaces are identified by their index, which is a number that is
+/// guaranteed to be unique for the lifetime of the system.
+///
+/// This type provides a safe and idiomatic API for working with IPv6 interface indexes.
 pub struct Ipv6Interface(pub NonZeroU32);
 impl Ipv6Interface {
-	fn metadata(&self) -> Result<(Ipv6Addr, String), std::io::Error> {
-		if_addrs::get_if_addrs()?
-			.into_iter()
-			.find_map(|iface| {
-				if let IpAddr::V6(addr) = iface.ip() {
-					if Ipv6Interface::from_name(&iface.name).ok()? == *self {
-						return Some((addr, iface.name));
-					}
-				}
-				None
-			})
-			.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Interface not found"))
-	}
-
+	/// Attempts to resolve the interface index from the given interface name.
 	pub fn from_name(name: &str) -> Result<Self, std::io::Error> {
 		Ok(Self(crate::util::iface_v6_name_to_index(name)?))
 	}
 
-	pub fn addr(&self) -> Result<Ipv6Addr, std::io::Error> {
-		Ok(self.metadata()?.0)
+	/// Returns the IPv6 addresses of the interface.
+	pub fn addrs(&self) -> Result<Vec<Ipv6Addr>, std::io::Error> {
+		Ok(if_addrs::get_if_addrs()?
+			.into_iter()
+			.filter_map(|iface| {
+				if let IpAddr::V6(addr) = iface.ip() {
+					if Ipv6Interface::from_name(&iface.name).ok()? == *self {
+						return Some(addr);
+					}
+				}
+				None
+			})
+			.collect())
 	}
 
+	/// Returns the name of the interface.
 	pub fn name(&self) -> Result<String, std::io::Error> {
-		Ok(self.metadata()?.1)
+		if_addrs::get_if_addrs()?
+			.into_iter()
+			.find_map(|iface| {
+				if iface.ip().is_ipv6() && Ipv6Interface::from_name(&iface.name).ok()? == *self {
+					Some(iface.name)
+				} else {
+					None
+				}
+			})
+			.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Interface not found"))
 	}
 
 	#[inline(always)]
+	/// Creates a new `Ipv6Interface` from the given raw interface index.
 	pub fn from_raw(raw: NonZeroU32) -> Self {
 		Self(raw)
 	}
 
 	#[inline(always)]
+	/// Returns the raw interface index.
+	///
+	/// This will always be a non-zero value.
 	pub fn as_u32(&self) -> u32 {
 		self.0.get()
 	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The version of IP to use.
 pub enum IpVersion {
+	/// Use IPv4.
 	V4,
+
+	/// Use IPv6.
 	V6,
+
+	/// Use both IPv4 and IPv6.
 	Both,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetInterfaceV4 {
+/// The interface to use for multicast.
+pub enum TargetInterface<Addr> {
+	/// Let the OS decide which interface to use.
 	Default,
+
+	/// Use as many interfaces as possible, falling back to `Default` if none are available.
 	All,
-	Specific(Ipv4Addr),
-	Multi(BTreeSet<Ipv4Addr>),
+
+	/// Use the given interface.
+	Specific(Addr),
+
+	/// Use the given interfaces.
+	Multi(BTreeSet<Addr>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetInterfaceV6 {
-	Default,
-	All,
-	Specific(Ipv6Interface),
-	Multi(BTreeSet<Ipv6Interface>),
-}
+/// A `TargetInterface` for IPv4.
+pub type TargetInterfaceV4 = TargetInterface<Ipv4Addr>;
+
+/// A `TargetInterface` for IPv6.
+pub type TargetInterfaceV6 = TargetInterface<Ipv6Interface>;
 
 pub(crate) trait MulticastSocketEx<Iface> {
 	fn set_multicast_if(&self, iface: Iface) -> Result<(), std::io::Error>;

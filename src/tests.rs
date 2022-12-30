@@ -25,3 +25,10 @@ fn test_dns_parser_backwards_compatibility() {
 
 	println!("========== THEIRS ==========\n{:#?}", dns_parser::Packet::parse(&buf).unwrap());
 }
+
+#[test]
+fn test_readme_version() {
+	let readme = std::fs::read_to_string("README.md").unwrap();
+	let version = env!("CARGO_PKG_VERSION");
+	assert!(readme.contains(format!("searchlight = \"{}\"", version).as_str()));
+}

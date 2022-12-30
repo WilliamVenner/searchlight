@@ -3,9 +3,15 @@ use std::{borrow::Borrow, cell::Cell, collections::HashSet, hash::Hash, net::Soc
 use trust_dns_client::op::DnsResponse;
 
 #[derive(Debug, Clone)]
+/// A responder is a device that responds to our queries.
 pub struct Responder {
+	/// The socket address they responded from.
 	pub addr: SocketAddr,
+
+	/// The last response we received from them, as a raw DNS message.
 	pub last_response: DnsResponse,
+
+	/// The last time we received a response from them.
 	pub last_responded: Instant,
 }
 

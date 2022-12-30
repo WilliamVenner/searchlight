@@ -1,3 +1,63 @@
+//! # mDNS Discovery
+//!
+//! This module provides a way to discover other mDNS responders on the network.
+//!
+//! In other words, this module provides an _mDNS client_.
+//!
+//! # Example
+//!
+//! ```rust, no_run
+//! use searchlight::{
+//!     discovery::{DiscoveryBuilder, DiscoveryEvent},
+//!     dns::{op::DnsResponse, rr::RData},
+//!     net::IpVersion,
+//! };
+//!
+//! fn get_chromecast_name(dns_packet: &DnsResponse) -> String {
+//!     dns_packet
+//!         .additionals()
+//!         .iter()
+//!         .find_map(|record| {
+//!             if let Some(RData::SRV(_)) = record.data() {
+//!                 let name = record.name().to_utf8();
+//!                 let name = name.strip_suffix('.').unwrap_or(&name);
+//!                 let name = name.strip_suffix("_googlecast._tcp.local").unwrap_or(&name);
+//!                 let name = name.strip_suffix('.').unwrap_or(&name);
+//!                 Some(name.to_string())
+//!             } else {
+//!                 None
+//!             }
+//!         })
+//!         .unwrap_or_else(|| "Unknown".into())
+//! }
+//!
+//! DiscoveryBuilder::new()
+//!     .service("_googlecast._tcp.local.")
+//!     .unwrap()
+//!     .build(IpVersion::Both)
+//!     .unwrap()
+//!     .run(|event| match event {
+//!         DiscoveryEvent::ResponderFound(responder) => {
+//!             println!(
+//!                 "Found Chromecast {} at {}",
+//!                 get_chromecast_name(&responder.last_response),
+//!                 responder.addr.ip()
+//!             );
+//!         }
+//!
+//!         DiscoveryEvent::ResponderLost(responder) => {
+//!             println!(
+//!                 "Chromecast {} at {} has gone away",
+//!                 get_chromecast_name(&responder.last_response),
+//!                 responder.addr.ip()
+//!             );
+//!         }
+//!
+//!         DiscoveryEvent::ResponseUpdate { .. } => {}
+//!     })
+//!     .unwrap();
+//! ```
+
 use crate::socket::{AsyncMdnsSocket, MdnsSocket};
 use std::{
 	net::SocketAddr,
@@ -45,6 +105,11 @@ fn discovery_packet(unicast: bool, service_name: Option<&DnsName>) -> Result<Vec
 		.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("Discovery packet failed to serialize: {err}")))
 }
 
+/// A built mDNS discovery (client) instance, ready to be started.
+///
+/// You can choose to run discovery on the current thread, or in the background, using [`Discovery::run`] or [`Discovery::run_in_background`].
+///
+/// A `Discovery` instance can be built using [`DiscoveryBuilder`].
 pub struct Discovery {
 	socket: MdnsSocket,
 	service_name: Option<DnsName>,
@@ -52,6 +117,14 @@ pub struct Discovery {
 	max_ignored_packets: u8,
 }
 impl Discovery {
+	/// Returns a new [`DiscoveryBuilder`].
+	pub fn builder() -> DiscoveryBuilder {
+		DiscoveryBuilder::new()
+	}
+
+	/// Run discovery on a new thread; in the background.
+	///
+	/// Returns a [`DiscoveryHandle`] that can be used to cleanly shut down the background thread.
 	pub fn run_in_background<F>(self, handler: F) -> DiscoveryHandle
 	where
 		F: Fn(DiscoveryEvent) + Send + Sync + 'static,
@@ -70,6 +143,9 @@ impl Discovery {
 		DiscoveryHandle(DiscoveryHandleDrop(Some(DiscoveryHandleInner { thread, shutdown_tx })))
 	}
 
+	/// Run discovery on the current thread.
+	///
+	/// This will start a new Tokio runtime on the current thread and block until a fatal error occurs.
 	pub fn run<F>(self, handler: F) -> Result<(), std::io::Error>
 	where
 		F: Fn(DiscoveryEvent) + Send + Sync + 'static,

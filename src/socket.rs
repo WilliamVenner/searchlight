@@ -176,11 +176,16 @@ impl MdnsSocket<UdpSocket> {
 		};
 
 		socket.bind(&socket2::SockAddr::from(SocketAddr::new(
-			IpAddr::V6(if cfg!(windows) && ifaces.len() == 1 {
-				let iface = ifaces.iter().next().unwrap();
-				iface.addr()?
-			} else {
-				Ipv6Addr::UNSPECIFIED
+			IpAddr::V6({
+				let mut bind_addr = Ipv6Addr::UNSPECIFIED;
+				if cfg!(windows) && ifaces.len() == 1 {
+					let iface = ifaces.iter().next().unwrap();
+					let addrs = iface.addrs()?;
+					if addrs.len() == 1 {
+						bind_addr = addrs.into_iter().next().unwrap();
+					}
+				}
+				bind_addr
 			}),
 			MDNS_PORT,
 		)))?;

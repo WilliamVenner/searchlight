@@ -38,6 +38,9 @@ impl Drop for BroadcasterHandleDrop {
 	}
 }
 
+/// A handle to a [`Broadcaster`](super::Broadcaster) instance that is running in the background.
+///
+/// You can use this handle to shut down the broadcaster instance remotely, and to add or remove services.
 pub struct BroadcasterHandle(pub(super) BroadcasterHandleDrop);
 impl BroadcasterHandle {
 	#[inline(always)]
@@ -53,12 +56,18 @@ impl BroadcasterHandle {
 		Some(handle(config))
 	}
 
+	/// Shuts down the broadcaster instance if it is still running.
+	///
+	/// This function will block until the broadcaster instance has shut down, and will return an error if the shutdown failed, or the broadcaster instance encountered a fatal error during its lifetime.
 	pub fn shutdown(mut self) -> Result<(), ShutdownError> {
 		let res = self.0.shutdown();
 		std::mem::forget(self.0);
 		res
 	}
 
+	/// Adds a service to the broadcaster configuration.
+	///
+	/// The service will be broadcasted at the next opportunity.
 	pub fn add_service(&self, service: Service) -> Result<(), ServiceDnsPacketBuilderError> {
 		match self.with_config(|broadcaster| Ok(broadcaster.write().unwrap().services.replace(service.try_into()?))) {
 			Some(Ok(_)) | None => Ok(()),
@@ -66,6 +75,9 @@ impl BroadcasterHandle {
 		}
 	}
 
+	/// Removes a service from the broadcaster configuration, finding it by name.
+	///
+	/// Returns `true` if the service was found and removed, and `false` if it was not found.
 	pub fn remove_named_service(&self, service_type: impl IntoDnsName, service_name: impl IntoDnsName) -> Result<bool, BadDnsNameError> {
 		let service_type = service_type.into_fqdn().map_err(|_| BadDnsNameError)?;
 		let service_name = service_name.into_fqdn().map_err(|_| BadDnsNameError)?;
@@ -85,6 +97,9 @@ impl BroadcasterHandle {
 		Ok(found)
 	}
 
+	/// Removes a service from the broadcaster configuration, finding it by type.
+	///
+	/// Returns `true` if the service was found and removed, and `false` if it was not found.
 	pub fn remove_service_type(&self, service_type: impl IntoDnsName) -> Result<bool, BadDnsNameError> {
 		let service_type = service_type.into_fqdn().map_err(|_| BadDnsNameError)?;
 
@@ -103,6 +118,9 @@ impl BroadcasterHandle {
 		Ok(found)
 	}
 
+	/// Removes a service from the broadcaster configuration, finding it by name and type via an existing [`Service`] reference.
+	///
+	/// Returns `true` if the service was found and removed, and `false` if it was not found.
 	pub fn remove_service(&self, service: &Service) {
 		self.with_config(|broadcaster| broadcaster.write().unwrap().services.remove(service));
 	}
