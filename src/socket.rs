@@ -94,12 +94,18 @@ impl MdnsSocket<UdpSocket> {
 			}
 		};
 
+		socket.bind(&socket2::SockAddr::from(SocketAddr::new(
+			IpAddr::V4(if cfg!(windows) && ifaces.len() == 1 {
+				*ifaces.iter().next().unwrap()
+			} else {
+				Ipv4Addr::UNSPECIFIED
+			}),
+			MDNS_PORT,
+		)))?;
+
 		if ifaces.len() == 1 {
 			let addr = ifaces.iter().next().unwrap();
-			socket.bind(&socket2::SockAddr::from(SocketAddr::new(IpAddr::V4(*addr), MDNS_PORT)))?;
 			socket.set_multicast_if_v4(addr)?;
-		} else {
-			socket.bind(&socket2::SockAddr::from(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), MDNS_PORT)))?;
 		}
 
 		socket.set_nonblocking(true)?;
@@ -169,13 +175,19 @@ impl MdnsSocket<UdpSocket> {
 			}
 		};
 
+		socket.bind(&socket2::SockAddr::from(SocketAddr::new(
+			IpAddr::V6(if cfg!(windows) && ifaces.len() == 1 {
+				let iface = ifaces.iter().next().unwrap();
+				iface.addr()?
+			} else {
+				Ipv6Addr::UNSPECIFIED
+			}),
+			MDNS_PORT,
+		)))?;
+
 		if ifaces.len() == 1 {
 			let iface = ifaces.iter().next().unwrap();
-			let addr = iface.addr()?;
-			socket.bind(&socket2::SockAddr::from(SocketAddr::new(IpAddr::V6(addr), MDNS_PORT)))?;
 			socket.set_multicast_if_v6(iface.as_u32())?;
-		} else {
-			socket.bind(&socket2::SockAddr::from(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), MDNS_PORT)))?;
 		}
 
 		socket.set_nonblocking(true)?;
@@ -274,7 +286,7 @@ where
 {
 	fn new(socket: Socket, ifaces: BTreeSet<Iface>) -> Self {
 		match ifaces.len() {
-			0 => Self::UniInterface(socket),
+			0 | 1 => Self::UniInterface(socket),
 			_ => Self::MultiInterface { socket, ifaces },
 		}
 	}
