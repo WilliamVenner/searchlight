@@ -317,7 +317,7 @@ where
 				debug_assert!(ifaces.len() > 1);
 
 				for iface in ifaces.iter().copied() {
-					dbg!(socket.set_multicast_if(dbg!(iface)))?;
+					socket.set_multicast_if(iface)?;
 					socket.send_to(packet, multicast_addr).await?;
 				}
 			}
