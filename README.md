@@ -1,7 +1,8 @@
 <p align="center">
-	<a href="https://crates.io/crates/searchlight"><img alt="crates.io" src="https://img.shields.io/crates/v/searchlight.svg"/></a>
-	<a href="https://docs.rs/searchlight/"><img alt="docs.rs" src="https://docs.rs/searchlight/badge.svg"/></a>
-	<img alt="License" src="https://img.shields.io/crates/l/searchlight"/>
+    <a href="https://crates.io/crates/searchlight"><img alt="crates.io" src="https://img.shields.io/crates/v/searchlight.svg"/></a>
+    <a href="https://docs.rs/searchlight/"><img alt="docs.rs" src="https://docs.rs/searchlight/badge.svg"/></a>
+    <img alt="License" src="https://img.shields.io/crates/l/searchlight"/>
+    <a href="https://github.com/WilliamVenner/searchlight/actions/workflows/ci.yml"><img alt="Workflow Status" src="https://github.com/WilliamVenner/searchlight/workflows/ci/badge.svg"></a>
 </p>
 
 <h1 align="center">📡 Searchlight</h1>
