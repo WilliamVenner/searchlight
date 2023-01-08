@@ -1,5 +1,6 @@
 use super::Discovery;
 use crate::{
+	broadcast::errors::DiscoveryBuilderError,
 	errors::BadDnsNameError,
 	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
 	socket::MdnsSocket,
@@ -83,7 +84,7 @@ impl DiscoveryBuilder {
 	/// Builds the discoverer.
 	///
 	/// You must specify whether to discover over IPv4, IPv6, or both.
-	pub fn build(self, ip_version: IpVersion) -> Result<Discovery, std::io::Error> {
+	pub fn build(self, ip_version: IpVersion) -> Result<Discovery, DiscoveryBuilderError> {
 		let DiscoveryBuilder {
 			service_name,
 			interval,
@@ -97,7 +98,9 @@ impl DiscoveryBuilder {
 			socket: match ip_version {
 				IpVersion::V4 => MdnsSocket::new_v4(loopback, interface_v4)?,
 				IpVersion::V6 => MdnsSocket::new_v6(loopback, interface_v6)?,
-				IpVersion::Both => MdnsSocket::new(loopback, interface_v4, interface_v6)?,
+				IpVersion::Both => {
+					MdnsSocket::new(loopback, interface_v4, interface_v6).map_err(|err| DiscoveryBuilderError::DuoIoError(err.0, err.1))?
+				}
 			},
 
 			max_ignored_packets,

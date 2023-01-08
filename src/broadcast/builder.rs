@@ -73,7 +73,9 @@ impl BroadcasterBuilder {
 			socket: match ip_version {
 				IpVersion::V4 => MdnsSocket::new_v4(loopback, interface_v4)?,
 				IpVersion::V6 => MdnsSocket::new_v6(loopback, interface_v6)?,
-				IpVersion::Both => MdnsSocket::new(loopback, interface_v4, interface_v6)?,
+				IpVersion::Both => {
+					MdnsSocket::new(loopback, interface_v4, interface_v6).map_err(|err| BroadcasterBuilderError::DuoIoError(err.0, err.1))?
+				}
 			},
 
 			config: Arc::new(RwLock::new(BroadcasterConfig {

@@ -20,17 +20,23 @@ pub(crate) enum MdnsSocket<Socket = UdpSocket> {
 	},
 }
 impl MdnsSocket<UdpSocket> {
-	pub fn new(loopback: bool, interface_v4: TargetInterfaceV4, interface_v6: TargetInterfaceV6) -> Result<Self, std::io::Error> {
-		Ok(Self::Multicol {
-			v4: match Self::new_v4(loopback, interface_v4)? {
-				Self::V4(socket) => socket,
-				_ => unreachable!(),
-			},
-			v6: match Self::new_v6(loopback, interface_v6)? {
-				Self::V6(socket) => socket,
-				_ => unreachable!(),
-			},
-		})
+	pub fn new(loopback: bool, interface_v4: TargetInterfaceV4, interface_v6: TargetInterfaceV6) -> Result<Self, (std::io::Error, std::io::Error)> {
+		let v4 = Self::new_v4(loopback, interface_v4).map(|socket| match socket {
+			MdnsSocket::V4(socket) => socket,
+			_ => unreachable!(),
+		});
+
+		let v6 = Self::new_v6(loopback, interface_v6).map(|socket| match socket {
+			MdnsSocket::V6(socket) => socket,
+			_ => unreachable!(),
+		});
+
+		match (v4, v6) {
+			(Ok(v4), Ok(v6)) => Ok(Self::Multicol { v4, v6 }),
+			(Ok(v4), Err(_)) => Ok(MdnsSocket::V4(v4)),
+			(Err(_), Ok(v6)) => Ok(MdnsSocket::V6(v6)),
+			(Err(v4), Err(v6)) => Err((v4, v6)),
+		}
 	}
 
 	pub fn new_v4(loopback: bool, interface: TargetInterfaceV4) -> Result<Self, std::io::Error> {
