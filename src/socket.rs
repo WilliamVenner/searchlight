@@ -252,10 +252,8 @@ impl AsyncMdnsSocket {
 				let v4 = v4.send_to_multicast(packet, SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT));
 				let v6 = v6.send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT));
 				match tokio::join!(v4, v6) {
-					(Ok(_), Ok(_)) => Ok(()),
+					(Ok(_), _) | (_, Ok(_)) => Ok(()),
 					(Err(v4), Err(v6)) => Err(MultiIpIoError::Both { v4, v6 }),
-					(Err(v4), Ok(_)) => Err(MultiIpIoError::V4(v4)),
-					(Ok(_), Err(v6)) => Err(MultiIpIoError::V6(v6)),
 				}
 			}
 		}
