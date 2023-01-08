@@ -110,12 +110,15 @@ impl MdnsSocket<UdpSocket> {
 			MDNS_PORT,
 		)))?;
 
+		// Make sure the socket works
+		socket.set_multicast_if_v4(&Ipv4Addr::UNSPECIFIED)?; // Set to default interface
+		socket.send_to(&[0], &SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT).into())?; // Send a multicast packet
+
+		// If we're only using one interface, set it as the default
 		if ifaces.len() == 1 {
 			let addr = ifaces.iter().next().unwrap();
 			socket.set_multicast_if_v4(addr)?;
 		}
-
-		socket.set_nonblocking(true)?;
 
 		Ok(Self::V4(InterfacedMdnsSocket::new(socket.into(), ifaces)))
 	}
@@ -197,12 +200,15 @@ impl MdnsSocket<UdpSocket> {
 			MDNS_PORT,
 		)))?;
 
+		// Make sure the socket works
+		socket.set_multicast_if_v6(0)?; // Set to default interface
+		socket.send_to(&[0], &SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT).into())?; // Send a multicast packet
+
+		// If we're only using one interface, set it as the default
 		if ifaces.len() == 1 {
 			let iface = ifaces.iter().next().unwrap();
 			socket.set_multicast_if_v6(iface.as_u32())?;
 		}
-
-		socket.set_nonblocking(true)?;
 
 		Ok(Self::V6(InterfacedMdnsSocket::new(socket.into(), ifaces)))
 	}
@@ -350,9 +356,17 @@ where
 {
 	fn into_async(self) -> Result<InterfacedMdnsSocket<AsyncUdpSocket, Iface>, std::io::Error> {
 		Ok(match self {
-			Self::UniInterface(socket) => InterfacedMdnsSocket::UniInterface(AsyncUdpSocket::from_std(socket)?),
+			Self::UniInterface(socket) => {
+				socket.set_nonblocking(true)?;
+				InterfacedMdnsSocket::UniInterface(AsyncUdpSocket::from_std(socket)?)
+			}
+
 			Self::MultiInterface { socket, ifaces } => InterfacedMdnsSocket::MultiInterface {
-				socket: AsyncUdpSocket::from_std(socket)?,
+				socket: {
+					socket.set_nonblocking(true)?;
+					AsyncUdpSocket::from_std(socket)?
+				},
+
 				ifaces,
 			},
 		})
