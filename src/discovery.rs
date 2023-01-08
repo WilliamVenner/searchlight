@@ -208,13 +208,22 @@ impl Discovery {
 			tokio::select! {
 				biased; // Prefer handling packets
 				recv = socket_recv.recv_multicast() => {
-					let recv = recv?;
+					let recv = match recv {
+						Ok(recv) => recv,
+						Err(err) => {
+							log::warn!("Failed to receive on mDNS socket: {err}");
+							continue;
+						}
+					};
 					Self::recv_multicast(service_name, &event_handler, &mut responder_memory, recv).await;
 				}
 
 				_ = discovery_interval.tick() => {
 					// Send discovery packet!
-					socket.send_multicast(&discovery_packet).await?;
+					if let Err(err) = socket.send_multicast(&discovery_packet).await {
+						log::warn!("Failed to send discovery packet on mDNS socket: {err}");
+						continue;
+					}
 
 					if max_ignored_packets == 0 {
 						continue;

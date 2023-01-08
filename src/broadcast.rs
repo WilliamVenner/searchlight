@@ -161,7 +161,13 @@ impl Broadcaster {
 	async fn recv_loop(tx: &AsyncMdnsSocket, rx: &mut MdnsSocketRecv<'_>, config: &RwLock<BroadcasterConfig>) -> Result<(), std::io::Error> {
 		let mut send_buf = vec![0u8; 4096];
 		loop {
-			let ((count, addr), packet) = rx.recv_multicast().await?;
+			let ((count, addr), packet) = match rx.recv_multicast().await {
+				Ok(recv) => recv,
+				Err(err) => {
+					log::warn!("Failed to receive on mDNS socket: {err}");
+					continue;
+				}
+			};
 			if count == 0 {
 				continue;
 			}
@@ -193,9 +199,15 @@ impl Broadcaster {
 
 				if service.dns_response.emit(&mut BinEncoder::new(&mut send_buf)).is_ok() {
 					if query.mdns_unicast_response() {
-						tx.send_to(&send_buf, addr).await?;
+						// Send unicast packet
+						if let Err(err) = tx.send_to(&send_buf, addr).await {
+							log::warn!("Failed to send unicast mDNS response to {addr}: {err}");
+						}
 					} else {
-						tx.send_multicast(&send_buf).await?;
+						// Send multicast packet
+						if let Err(err) = tx.send_multicast(&send_buf).await {
+							log::warn!("Failed to send multicast mDNS response (requested by {addr}): {err}");
+						}
 					}
 				}
 			}
