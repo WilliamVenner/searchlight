@@ -12,7 +12,8 @@ use std::{
 	time::Duration,
 };
 
-fn client_and_server(ip_version: IpVersion) {
+#[test]
+fn client_and_server() {
 	let (test_tx, test_rx) = std::sync::mpsc::sync_channel(0);
 
 	std::thread::spawn(move || {
@@ -35,7 +36,7 @@ fn client_and_server(ip_version: IpVersion) {
 						.build()
 						.unwrap(),
 				)
-				.build(ip_version)
+				.build(IpVersion::Both)
 				.expect("Failed to create mDNS broadcaster")
 				.run_in_background(),
 		)));
@@ -51,7 +52,7 @@ fn client_and_server(ip_version: IpVersion) {
 			.loopback()
 			.interface_v4(TargetInterface::Specific(Ipv4Addr::LOCALHOST))
 			.interface_v6(TargetInterface::Specific(Ipv6Interface::from_raw(NonZeroU32::new(1).unwrap())))
-			.build(ip_version)
+			.build(IpVersion::Both)
 			.unwrap()
 			.run_in_background(move |event| {
 				if let DiscoveryEvent::ResponderFound(responder) | DiscoveryEvent::ResponderLost(responder) = &event {
@@ -114,15 +115,4 @@ fn client_and_server(ip_version: IpVersion) {
 	test_rx
 		.recv_timeout(Duration::from_secs(30))
 		.expect("Timed out waiting for test to finish");
-}
-
-#[test]
-fn client_and_server_v4() {
-	client_and_server(IpVersion::V4);
-}
-
-#[test]
-#[cfg(not(github_ci))]
-fn client_and_server_v6() {
-	client_and_server(IpVersion::V6);
 }
