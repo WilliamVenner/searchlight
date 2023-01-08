@@ -1,4 +1,5 @@
 use crate::{
+	errors::MultiIpIoError,
 	net::{Ipv6Interface, MulticastSocketEx, TargetInterfaceV4, TargetInterfaceV6},
 	util::iface_v6_name_to_index,
 	MDNS_PORT, MDNS_V4_IP, MDNS_V6_IP,
@@ -33,9 +34,9 @@ impl MdnsSocket<UdpSocket> {
 
 		match (v4, v6) {
 			(Ok(v4), Ok(v6)) => Ok(Self::Multicol { v4, v6 }),
+			(Err(v4), Err(v6)) => Err((v4, v6)),
 			(Ok(v4), Err(_)) => Ok(MdnsSocket::V4(v4)),
 			(Err(_), Ok(v6)) => Ok(MdnsSocket::V6(v6)),
-			(Err(v4), Err(v6)) => Err((v4, v6)),
 		}
 	}
 
@@ -206,35 +207,56 @@ impl MdnsSocket<UdpSocket> {
 		Ok(Self::V6(InterfacedMdnsSocket::new(socket.into(), ifaces)))
 	}
 
-	pub async fn into_async(self) -> Result<AsyncMdnsSocket, std::io::Error> {
+	pub async fn into_async(self) -> Result<AsyncMdnsSocket, MultiIpIoError> {
 		Ok(match self {
-			Self::V4(v4) => AsyncMdnsSocket::V4(v4.into_async()?),
-			Self::V6(v6) => AsyncMdnsSocket::V6(v6.into_async()?),
+			Self::V4(v4) => AsyncMdnsSocket::V4(v4.into_async().map_err(MultiIpIoError::V4)?),
+			Self::V6(v6) => AsyncMdnsSocket::V6(v6.into_async().map_err(MultiIpIoError::V6)?),
 			Self::Multicol { v4, v6 } => AsyncMdnsSocket::Multicol {
-				v4: v4.into_async()?,
-				v6: v6.into_async()?,
+				v4: v4.into_async().map_err(MultiIpIoError::V4)?,
+				v6: v6.into_async().map_err(MultiIpIoError::V6)?,
 			},
 		})
 	}
 }
 impl AsyncMdnsSocket {
-	pub async fn send_to(&self, packet: &[u8], addr: SocketAddr) -> Result<(), std::io::Error> {
+	pub async fn send_to(&self, packet: &[u8], addr: SocketAddr) -> Result<(), MultiIpIoError> {
 		match (addr, self) {
-			(SocketAddr::V4(addr), Self::V4(v4) | Self::Multicol { v4, .. }) => v4.send_to(packet, addr).await,
-			(SocketAddr::V6(addr), Self::V6(v6) | Self::Multicol { v6, .. }) => v6.send_to(packet, addr).await,
-			_ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid address")),
+			(SocketAddr::V4(addr), Self::V4(v4) | Self::Multicol { v4, .. }) => v4.send_to(packet, addr).await.map_err(MultiIpIoError::V4),
+			(SocketAddr::V6(addr), Self::V6(v6) | Self::Multicol { v6, .. }) => v6.send_to(packet, addr).await.map_err(MultiIpIoError::V6),
+
+			(SocketAddr::V6(_), Self::V4(_)) => Err(MultiIpIoError::V4(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				"Invalid address (only IPv4 available, got IPv6 address)",
+			))),
+
+			(SocketAddr::V4(_), Self::V6(_)) => Err(MultiIpIoError::V4(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				"Invalid address (only IPv6 available, got IPv4 address)",
+			))),
 		}
 	}
 
-	pub async fn send_multicast(&self, packet: &[u8]) -> Result<(), std::io::Error> {
+	pub async fn send_multicast(&self, packet: &[u8]) -> Result<(), MultiIpIoError> {
 		match self {
-			Self::V4(v4) => v4.send_to_multicast(packet, SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT)).await,
-			Self::V6(v6) => v6.send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT)).await,
+			Self::V4(v4) => v4
+				.send_to_multicast(packet, SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT))
+				.await
+				.map_err(MultiIpIoError::V4),
+
+			Self::V6(v6) => v6
+				.send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT))
+				.await
+				.map_err(MultiIpIoError::V6),
 
 			Self::Multicol { v4, v6 } => {
 				let v4 = v4.send_to_multicast(packet, SocketAddrV4::new(MDNS_V4_IP, MDNS_PORT));
 				let v6 = v6.send_to_multicast(packet, SocketAddr::new(IpAddr::V6(MDNS_V6_IP), MDNS_PORT));
-				tokio::try_join!(v4, v6).map(|_| ())
+				match tokio::join!(v4, v6) {
+					(Ok(_), Ok(_)) => Ok(()),
+					(Err(v4), Err(v6)) => Err(MultiIpIoError::Both { v4, v6 }),
+					(Err(v4), Ok(_)) => Err(MultiIpIoError::V4(v4)),
+					(Ok(_), Err(v6)) => Err(MultiIpIoError::V6(v6)),
+				}
 			}
 		}
 	}
@@ -242,10 +264,13 @@ impl AsyncMdnsSocket {
 	pub fn recv(&self, buffer: Vec<u8>) -> MdnsSocketRecv {
 		match self {
 			#[rustfmt::skip]
-			Self::V4(InterfacedMdnsSocket::UniInterface(socket) | InterfacedMdnsSocket::MultiInterface { socket, .. }) |
-			Self::V6(InterfacedMdnsSocket::UniInterface(socket) | InterfacedMdnsSocket::MultiInterface { socket, .. }) => {
-				MdnsSocketRecv::Unicol(socket, buffer)
+			Self::V4(InterfacedMdnsSocket::UniInterface(socket) | InterfacedMdnsSocket::MultiInterface { socket, .. }) => {
+				MdnsSocketRecv::V4(socket, buffer)
 			},
+
+			Self::V6(InterfacedMdnsSocket::UniInterface(socket) | InterfacedMdnsSocket::MultiInterface { socket, .. }) => {
+				MdnsSocketRecv::V6(socket, buffer)
+			}
 
 			Self::Multicol {
 				v4: InterfacedMdnsSocket::UniInterface(v4) | InterfacedMdnsSocket::MultiInterface { socket: v4, .. },
@@ -259,28 +284,47 @@ impl AsyncMdnsSocket {
 }
 
 pub enum MdnsSocketRecv<'a> {
-	Unicol(&'a AsyncUdpSocket, Vec<u8>),
+	V4(&'a AsyncUdpSocket, Vec<u8>),
+	V6(&'a AsyncUdpSocket, Vec<u8>),
 	Multicol {
 		v4: (&'a AsyncUdpSocket, Vec<u8>),
 		v6: (&'a AsyncUdpSocket, Vec<u8>),
 	},
 }
 impl MdnsSocketRecv<'_> {
-	pub async fn recv_multicast(&mut self) -> Result<((usize, SocketAddr), &[u8]), std::io::Error> {
-		Ok(match self {
-			Self::Unicol(socket, buf) => (socket.recv_from(buf).await?, buf),
+	pub async fn recv_multicast(&mut self) -> Result<((usize, SocketAddr), &[u8]), MultiIpIoError> {
+		match self {
+			Self::V4(socket, buf) => Ok((socket.recv_from(buf).await.map_err(MultiIpIoError::V4)?, buf)),
+			Self::V6(socket, buf) => Ok((socket.recv_from(buf).await.map_err(MultiIpIoError::V6)?, buf)),
 			Self::Multicol {
 				v4: (v4, buf_v4),
 				v6: (v6, buf_v6),
 			} => {
-				let v4 = v4.recv_from(buf_v4);
-				let v6 = v6.recv_from(buf_v6);
+				let v4 = async { v4.recv_from(buf_v4).await.map(|recv| (recv, &**buf_v4)) };
+				let v6 = async { v6.recv_from(buf_v6).await.map(|recv| (recv, &**buf_v6)) };
+				tokio::pin!(v4);
+				tokio::pin!(v6);
 				tokio::select! {
-					v4 = v4 => (v4?, buf_v4),
-					v6 = v6 => (v6?, buf_v6),
+					v4 = &mut v4 => match v4 {
+						Ok(v4) => Ok(v4),
+
+						Err(v4) => match v6.await {
+							Ok(v6) => Ok(v6),
+							Err(v6) => Err(MultiIpIoError::Both { v4, v6 })
+						},
+					},
+
+					v6 = &mut v6 => match v6 {
+						Ok(v6) => Ok(v6),
+
+						Err(v6) => match v4.await {
+							Ok(v4) => Ok(v4),
+							Err(v4) => Err(MultiIpIoError::Both { v4, v6 })
+						},
+					}
 				}
 			}
-		})
+		}
 	}
 }
 

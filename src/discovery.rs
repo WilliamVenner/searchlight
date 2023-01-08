@@ -58,7 +58,10 @@
 //!     .unwrap();
 //! ```
 
-use crate::socket::{AsyncMdnsSocket, MdnsSocket};
+use crate::{
+	errors::MultiIpIoError,
+	socket::{AsyncMdnsSocket, MdnsSocket},
+};
 use std::{
 	net::SocketAddr,
 	sync::Arc,
@@ -149,7 +152,7 @@ impl Discovery {
 	/// Run discovery on the current thread.
 	///
 	/// This will start a new Tokio runtime on the current thread and block until a fatal error occurs.
-	pub fn run<F>(self, handler: F) -> Result<(), std::io::Error>
+	pub fn run<F>(self, handler: F) -> Result<(), MultiIpIoError>
 	where
 		F: Fn(DiscoveryEvent) + Send + Sync + 'static,
 	{
@@ -162,7 +165,7 @@ impl Discovery {
 	}
 }
 impl Discovery {
-	async fn impl_run(self, handler: EventHandler, shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>) -> Result<(), std::io::Error> {
+	async fn impl_run(self, handler: EventHandler, shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>) -> Result<(), MultiIpIoError> {
 		let Discovery {
 			socket,
 			service_name,
@@ -193,7 +196,7 @@ impl Discovery {
 		discovery_interval: Duration,
 		max_ignored_packets: u8,
 		socket: &AsyncMdnsSocket,
-	) -> Result<(), std::io::Error> {
+	) -> Result<(), MultiIpIoError> {
 		let service_name = service_name.as_ref();
 
 		// Response listening

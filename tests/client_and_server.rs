@@ -14,6 +14,8 @@ use std::{
 
 #[test]
 fn client_and_server() {
+	simple_logger::init_with_level(log::Level::Info).ok();
+
 	let (test_tx, test_rx) = std::sync::mpsc::sync_channel(0);
 
 	std::thread::spawn(move || {

@@ -1,7 +1,7 @@
-use crate::errors::ShutdownError;
+use crate::errors::{MultiIpIoError, ShutdownError};
 
 pub(super) struct DiscoveryHandleInner {
-	pub(super) thread: std::thread::JoinHandle<Result<(), std::io::Error>>,
+	pub(super) thread: std::thread::JoinHandle<Result<(), MultiIpIoError>>,
 	pub(super) shutdown_tx: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -19,7 +19,7 @@ impl DiscoveryHandleDrop {
 
 		match thread.join() {
 			Ok(Ok(_)) => Ok(()),
-			Ok(Err(err)) => Err(ShutdownError::IoError(err)),
+			Ok(Err(err)) => Err(ShutdownError::MultiIpIoError(err)),
 			Err(err) => Err(ShutdownError::ThreadJoinError(err)),
 		}
 	}

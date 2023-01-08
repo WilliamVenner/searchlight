@@ -19,14 +19,20 @@ pub enum ShutdownError {
 	/// The underlying thread panicked
 	ThreadJoinError(Box<dyn Any + Send + 'static>),
 
-	#[error("I/O error occurred during Searchlight thread execution: {0}")]
+	#[error("During Searchlight thread execution: {0}")]
 	/// An I/O error occurred
-	IoError(#[from] std::io::Error),
+	MultiIpIoError(#[from] MultiIpIoError),
 }
 
 #[derive(Debug, Error)]
-/// An I/O error occurred on potentially both IPv4 and IPv6 sockets.
+/// Because this crate works with both IPv4 and IPv6 sockets under a single interface, it is possible for an I/O error to occur on both sockets. This enum is used to represent that.
+///
+/// For convenience, this enum also has a generic [`IoError`](`MultiIpIoError::IoError`) variant that can be used to represent an I/O error that is not specific to any socket (not to be confused with [`Both`](MultiIpIoError::Both))
 pub enum MultiIpIoError {
+	#[error("I/O error: {0}")]
+	/// A generic I/O error occurred from something other than a socket.
+	IoError(#[from] std::io::Error),
+
 	#[error("I/O error: {0} (IPv4)")]
 	/// An I/O error occurred on the IPv4 socket
 	V4(std::io::Error),

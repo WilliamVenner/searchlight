@@ -32,3 +32,4 @@ winapi = { version = "0.3", features = ["netioapi"] }
 
 [dev-dependencies]
 dns-parser = "0.8"
+simple_logger = "4"

@@ -58,7 +58,10 @@
 //! println!("Done!");
 //! ```
 
-use crate::socket::{AsyncMdnsSocket, MdnsSocket, MdnsSocketRecv};
+use crate::{
+	errors::MultiIpIoError,
+	socket::{AsyncMdnsSocket, MdnsSocket, MdnsSocketRecv},
+};
 use std::{
 	collections::BTreeSet,
 	sync::{Arc, RwLock},
@@ -113,7 +116,8 @@ impl Broadcaster {
 				.unwrap()
 				.block_on(async move {
 					let socket = socket.into_async().await?;
-					Self::impl_run(&socket, socket.recv(vec![0; 4096]), config_ref, Some(shutdown_rx)).await
+					Self::impl_run(&socket, socket.recv(vec![0; 4096]), config_ref, Some(shutdown_rx)).await;
+					Ok(())
 				})
 		});
 
@@ -123,7 +127,7 @@ impl Broadcaster {
 	/// Run broadcasting on the current thread.
 	///
 	/// This will start a new Tokio runtime on the current thread and block until a fatal error occurs.
-	pub fn run(self) -> Result<(), std::io::Error> {
+	pub fn run(self) -> Result<(), MultiIpIoError> {
 		let Broadcaster { socket, config } = self;
 
 		tokio::runtime::Builder::new_current_thread()
@@ -133,7 +137,8 @@ impl Broadcaster {
 			.unwrap()
 			.block_on(async move {
 				let socket = socket.into_async().await?;
-				Self::impl_run(&socket, socket.recv(vec![0; 4096]), config, None).await
+				Self::impl_run(&socket, socket.recv(vec![0; 4096]), config, None).await;
+				Ok(())
 			})
 	}
 }
@@ -143,12 +148,12 @@ impl Broadcaster {
 		mut rx: MdnsSocketRecv<'_>,
 		config: Arc<RwLock<BroadcasterConfig>>,
 		shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>,
-	) -> Result<(), std::io::Error> {
+	) {
 		if let Some(shutdown_rx) = shutdown_rx {
 			tokio::select! {
 				biased;
-				res = Self::recv_loop(tx, &mut rx, &config) => res,
-				_ = shutdown_rx => Ok(()),
+				_ = Self::recv_loop(tx, &mut rx, &config) => (),
+				_ = shutdown_rx => (),
 			}
 		} else {
 			Self::recv_loop(tx, &mut rx, &config).await
@@ -158,7 +163,7 @@ impl Broadcaster {
 	#[allow(clippy::await_holding_lock)]
 	// It's fine to hold the lock in this case because we're using the current-thread runtime.
 	// The future just won't be Send.
-	async fn recv_loop(tx: &AsyncMdnsSocket, rx: &mut MdnsSocketRecv<'_>, config: &RwLock<BroadcasterConfig>) -> Result<(), std::io::Error> {
+	async fn recv_loop(tx: &AsyncMdnsSocket, rx: &mut MdnsSocketRecv<'_>, config: &RwLock<BroadcasterConfig>) {
 		let mut send_buf = vec![0u8; 4096];
 		loop {
 			let ((count, addr), packet) = match rx.recv_multicast().await {

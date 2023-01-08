@@ -1,13 +1,13 @@
 use super::{errors::ServiceDnsPacketBuilderError, BroadcasterConfig, Service};
 use crate::{
-	errors::{BadDnsNameError, ShutdownError},
+	errors::{BadDnsNameError, MultiIpIoError, ShutdownError},
 	util::IntoDnsName,
 };
 use std::sync::{Arc, RwLock};
 
 pub(super) struct BroadcasterHandleInner {
 	pub(super) config: Arc<RwLock<BroadcasterConfig>>,
-	pub(super) thread: std::thread::JoinHandle<Result<(), std::io::Error>>,
+	pub(super) thread: std::thread::JoinHandle<Result<(), MultiIpIoError>>,
 	pub(super) shutdown_tx: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -25,7 +25,7 @@ impl BroadcasterHandleDrop {
 
 		match thread.join() {
 			Ok(Ok(_)) => Ok(()),
-			Ok(Err(err)) => Err(ShutdownError::IoError(err)),
+			Ok(Err(err)) => Err(ShutdownError::MultiIpIoError(err)),
 			Err(err) => Err(ShutdownError::ThreadJoinError(err)),
 		}
 	}
