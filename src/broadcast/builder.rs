@@ -1,5 +1,6 @@
 use super::{errors::BroadcasterBuilderError, service::ServiceDnsResponse, Broadcaster, BroadcasterConfig, Service};
 use crate::{
+	errors::MultiIpIoError,
 	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
 	socket::MdnsSocket,
 };
@@ -71,11 +72,16 @@ impl BroadcasterBuilder {
 
 		Ok(Broadcaster {
 			socket: match ip_version {
-				IpVersion::V4 => MdnsSocket::new_v4(loopback, interface_v4)?,
-				IpVersion::V6 => MdnsSocket::new_v6(loopback, interface_v6)?,
-				IpVersion::Both => {
-					MdnsSocket::new(loopback, interface_v4, interface_v6).map_err(|err| BroadcasterBuilderError::DuoIoError(err.0, err.1))?
+				IpVersion::V4 => {
+					MdnsSocket::new_v4(loopback, interface_v4).map_err(|v4| BroadcasterBuilderError::MultiIpIoError(MultiIpIoError::V4(v4)))?
 				}
+
+				IpVersion::V6 => {
+					MdnsSocket::new_v6(loopback, interface_v6).map_err(|v6| BroadcasterBuilderError::MultiIpIoError(MultiIpIoError::V6(v6)))?
+				}
+
+				IpVersion::Both => MdnsSocket::new(loopback, interface_v4, interface_v6)
+					.map_err(|(v4, v6)| BroadcasterBuilderError::MultiIpIoError(MultiIpIoError::Both { v4, v6 }))?,
 			},
 
 			config: Arc::new(RwLock::new(BroadcasterConfig {

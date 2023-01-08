@@ -1,7 +1,6 @@
-use super::Discovery;
+use super::{errors::DiscoveryBuilderError, Discovery};
 use crate::{
-	broadcast::errors::DiscoveryBuilderError,
-	errors::BadDnsNameError,
+	errors::{BadDnsNameError, MultiIpIoError},
 	net::{IpVersion, TargetInterfaceV4, TargetInterfaceV6},
 	socket::MdnsSocket,
 	util::IntoDnsName,
@@ -96,11 +95,16 @@ impl DiscoveryBuilder {
 
 		Ok(Discovery {
 			socket: match ip_version {
-				IpVersion::V4 => MdnsSocket::new_v4(loopback, interface_v4)?,
-				IpVersion::V6 => MdnsSocket::new_v6(loopback, interface_v6)?,
-				IpVersion::Both => {
-					MdnsSocket::new(loopback, interface_v4, interface_v6).map_err(|err| DiscoveryBuilderError::DuoIoError(err.0, err.1))?
+				IpVersion::V4 => {
+					MdnsSocket::new_v4(loopback, interface_v4).map_err(|v4| DiscoveryBuilderError::MultiIpIoError(MultiIpIoError::V4(v4)))?
 				}
+
+				IpVersion::V6 => {
+					MdnsSocket::new_v6(loopback, interface_v6).map_err(|v6| DiscoveryBuilderError::MultiIpIoError(MultiIpIoError::V6(v6)))?
+				}
+
+				IpVersion::Both => MdnsSocket::new(loopback, interface_v4, interface_v6)
+					.map_err(|(v4, v6)| DiscoveryBuilderError::MultiIpIoError(MultiIpIoError::Both { v4, v6 }))?,
 			},
 
 			max_ignored_packets,

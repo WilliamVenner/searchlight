@@ -1,3 +1,5 @@
+use crate::errors::MultiIpIoError;
+
 #[derive(Debug, Error)]
 /// An error occurred while building a [`Service`](super::Service)
 pub enum ServiceBuilderError {
@@ -19,7 +21,7 @@ pub enum ServiceDnsPacketBuilderError {
 }
 
 #[derive(Debug, Error)]
-/// An error occurred while building a [`Broadcaster`](crate::broadcast::Broadcaster)
+/// An error occurred while building a [`Broadcaster`](super::Broadcaster)
 pub enum BroadcasterBuilderError {
 	#[error("{0}")]
 	/// An error occurred while building a service DNS packet
@@ -29,19 +31,7 @@ pub enum BroadcasterBuilderError {
 	/// An I/O error occurred
 	IoError(#[from] std::io::Error),
 
-	#[error("I/O error: {0} (IPv4) {1} (IPv6)")]
-	/// An I/O error occurred (both IPv4 and IPv6)
-	DuoIoError(std::io::Error, std::io::Error),
-}
-
-#[derive(Debug, Error)]
-/// An error occurred while building a [`Discovery`](crate::discovery::Discovery)
-pub enum DiscoveryBuilderError {
-	#[error("I/O error: {0}")]
-	/// An I/O error occurred
-	IoError(#[from] std::io::Error),
-
-	#[error("I/O error: {0} (IPv4) {1} (IPv6)")]
-	/// An I/O error occurred (both IPv4 and IPv6)
-	DuoIoError(std::io::Error, std::io::Error),
+	#[error("{0}")]
+	/// An I/O error occurred (on potentially both IPv4 and IPv6 sockets)
+	MultiIpIoError(MultiIpIoError),
 }

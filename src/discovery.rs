@@ -70,6 +70,9 @@ use trust_dns_client::{
 	serialize::binary::{BinDecodable, BinEncodable},
 };
 
+/// Errors that can occur while broadcasting or initializing a broadcaster.
+pub mod errors;
+
 mod builder;
 pub use builder::DiscoveryBuilder;
 
