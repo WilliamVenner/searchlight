@@ -35,6 +35,7 @@ impl Drop for DiscoveryHandleDrop {
 /// A handle to a [`Discovery`](super::Discovery) instance that is running in the background.
 ///
 /// You can use this handle to shut down the discovery instance remotely.
+#[must_use = "The discovery instance will shut down if the handle is dropped; store the handle somewhere or use `std::mem::forget` to keep it running"]
 pub struct DiscoveryHandle(pub(super) DiscoveryHandleDrop);
 impl DiscoveryHandle {
 	/// Shuts down the discovery instance if it is still running.

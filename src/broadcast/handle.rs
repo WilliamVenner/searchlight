@@ -41,6 +41,7 @@ impl Drop for BroadcasterHandleDrop {
 /// A handle to a [`Broadcaster`](super::Broadcaster) instance that is running in the background.
 ///
 /// You can use this handle to shut down the broadcaster instance remotely, and to add or remove services.
+#[must_use = "The broadcaster instance will shut down if the handle is dropped; store the handle somewhere or use `std::mem::forget` to keep it running"]
 pub struct BroadcasterHandle(pub(super) BroadcasterHandleDrop);
 impl BroadcasterHandle {
 	#[inline(always)]
