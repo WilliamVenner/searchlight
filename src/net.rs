@@ -150,12 +150,15 @@ impl MulticastSocketEx<Ipv4Addr> for tokio::net::UdpSocket {
 	fn set_multicast_if(&self, iface: Ipv4Addr) -> Result<(), std::io::Error> {
 		use std::os::unix::io::AsRawFd;
 		unsafe {
+			let iface = libc::in_addr {
+				s_addr: u32::from(iface).to_be(),
+			};
 			let res = libc::setsockopt(
 				self.as_raw_fd(),
 				libc::IPPROTO_IP,
 				libc::IP_MULTICAST_IF,
-				&u32::from(iface) as *const _ as *const _,
-				std::mem::size_of::<u32>() as libc::socklen_t,
+				&iface as *const _ as *const _,
+				std::mem::size_of::<libc::in_addr>() as libc::socklen_t,
 			);
 			if res == 0 {
 				Ok(())
