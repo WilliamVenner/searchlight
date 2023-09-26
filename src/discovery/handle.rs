@@ -26,9 +26,7 @@ impl DiscoveryHandleDrop {
 }
 impl Drop for DiscoveryHandleDrop {
 	fn drop(&mut self) {
-		if let Err(ShutdownError::ThreadJoinError(err)) = self.shutdown() {
-			Err::<(), _>(err).unwrap();
-		}
+		self.shutdown().ok();
 	}
 }
 

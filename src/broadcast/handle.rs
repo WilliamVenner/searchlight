@@ -32,9 +32,7 @@ impl BroadcasterHandleDrop {
 }
 impl Drop for BroadcasterHandleDrop {
 	fn drop(&mut self) {
-		if let Err(ShutdownError::ThreadJoinError(err)) = self.shutdown() {
-			Err::<(), _>(err).unwrap();
-		}
+		self.shutdown().ok();
 	}
 }
 
