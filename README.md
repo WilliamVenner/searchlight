@@ -36,7 +36,7 @@ Add Searchlight to your [`Cargo.toml`](https://doc.rust-lang.org/cargo/reference
 
 ```toml
 [dependencies]
-searchlight = "0.3.1"
+searchlight = "0.3.2"
 ```
 
 To learn more about how to use Searchlight, see the [documentation](https://docs.rs/searchlight/).
